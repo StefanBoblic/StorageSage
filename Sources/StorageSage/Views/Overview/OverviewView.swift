@@ -32,7 +32,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Storage Overview")
                     .font(.largeTitle.bold())
-            Text(viewModel.scannedAt.map { "Last analyzed \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Preparing your first analysis…")
+            Text(overviewStatus)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -42,6 +42,15 @@ struct OverviewView: View {
                     .controlSize(.large)
             }
         }
+    }
+
+    private var overviewStatus: String {
+        if viewModel.isUsingCachedScan && viewModel.isScanning, let scannedAt = viewModel.scannedAt {
+            return "Showing \(scannedAt.formatted(date: .abbreviated, time: .shortened)) analysis · Refreshing…"
+        }
+        return viewModel.scannedAt.map {
+            "Last analyzed \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? "Preparing your first analysis…"
     }
 
     private var storageCard: some View {

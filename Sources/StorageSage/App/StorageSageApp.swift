@@ -31,7 +31,7 @@ struct StorageSageApp: App {
         Settings {
             SettingsView()
                 .environmentObject(viewModel)
-                .frame(width: 520, height: 300)
+                .frame(width: 560, height: 540)
         }
     }
 }

@@ -8,7 +8,7 @@
 import Foundation
 
 protocol StorageScanning: Sendable {
-    func scan() -> ScanResult
+    func scan() async -> ScanResult
 }
 
 struct StorageScanner: StorageScanning {
@@ -16,45 +16,38 @@ struct StorageScanner: StorageScanning {
     private let analyzers: [any StorageAnalyzing]
     private let fileSystem: any FileSystemInspecting
     private let nameProvider: any CandidateNameProviding
+    private let configuration: any ScanConfigurationProviding
 
     init(
         targetProvider: any ScanTargetProviding = DefaultScanTargetProvider(),
         analyzers: [any StorageAnalyzing] = [SimulatorStorageAnalyzer()],
         fileSystem: any FileSystemInspecting = FileSystemInspector(),
-        nameProvider: any CandidateNameProviding = CandidateNameProvider()
+        nameProvider: any CandidateNameProviding = CandidateNameProvider(),
+        configuration: any ScanConfigurationProviding = UserDefaultsScanConfiguration()
     ) {
         self.targetProvider = targetProvider
         self.analyzers = analyzers
         self.fileSystem = fileSystem
         self.nameProvider = nameProvider
+        self.configuration = configuration
     }
 
-    func scan() -> ScanResult {
-        var candidates: [CleanupCandidate] = analyzers.flatMap { $0.analyze() }
-        var inaccessible: [String] = []
+    func scan() async -> ScanResult {
+        async let targetResult = scanTargets(targetProvider.targets())
+        async let analyzerCandidates = runAnalyzers()
+        let (scanned, analyzed) = await (targetResult, analyzerCandidates)
 
-        for target in targetProvider.targets() {
-            switch target.mode {
-            case .item:
-                if let candidate = candidate(for: target) {
-                    candidates.append(candidate)
-                }
-            case .children(let minimumSize):
-                addChildren(
-                    of: target,
-                    minimumSize: minimumSize,
-                    to: &candidates,
-                    inaccessible: &inaccessible
-                )
-            }
-        }
+        var candidates = analyzed + scanned.candidates
+        var inaccessible = scanned.inaccessiblePaths
 
         for url in targetProvider.protectedURLs()
         where fileSystem.exists(url) && !fileSystem.isReadable(url) {
             inaccessible.append(url.path)
         }
 
-        candidates.sort { $0.size > $1.size }
+        candidates = candidates.reduce(into: [String: CleanupCandidate]()) { unique, candidate in
+            if unique[candidate.id] == nil { unique[candidate.id] = candidate }
+        }.map(\.value).sorted { $0.size > $1.size }
         return ScanResult(
             candidates: candidates,
             volume: volumeSnapshot(),
@@ -63,22 +56,69 @@ struct StorageScanner: StorageScanning {
         )
     }
 
-    private func addChildren(
-        of target: ScanTarget,
-        minimumSize: Int64,
-        to candidates: inout [CleanupCandidate],
-        inaccessible: inout [String]
-    ) {
-        guard let children = try? fileSystem.children(of: target.url) else {
-            if fileSystem.exists(target.url) { inaccessible.append(target.url.path) }
-            return
+    private func scanTargets(_ targets: [ScanTarget]) async -> TargetScanResult {
+        let prepared = prepareJobs(for: targets)
+        let limit = max(configuration.maximumConcurrentTasks, 1)
+        let candidates = await withTaskGroup(of: CleanupCandidate?.self, returning: [CleanupCandidate].self) { group in
+            var iterator = prepared.jobs.makeIterator()
+            var results: [CleanupCandidate] = []
+
+            for _ in 0..<min(limit, prepared.jobs.count) {
+                if let job = iterator.next() {
+                    group.addTask { candidate(for: job) }
+                }
+            }
+
+            while let result = await group.next() {
+                if let result { results.append(result) }
+                if let job = iterator.next() {
+                    group.addTask { candidate(for: job) }
+                }
+            }
+            return results
         }
+        return TargetScanResult(
+            candidates: candidates,
+            inaccessiblePaths: prepared.inaccessiblePaths
+        )
+    }
 
-        for child in children {
+    private func runAnalyzers() async -> [CleanupCandidate] {
+        await withTaskGroup(of: [CleanupCandidate].self, returning: [CleanupCandidate].self) { group in
+            for analyzer in analyzers {
+                group.addTask { analyzer.analyze() }
+            }
+            return await group.reduce(into: []) { $0.append(contentsOf: $1) }
+        }
+    }
+
+    private func prepareJobs(for targets: [ScanTarget]) -> PreparedScanJobs {
+        var jobs: [ScanJob] = []
+        var inaccessiblePaths: [String] = []
+
+        for target in targets {
+            switch target.mode {
+            case .item:
+                jobs.append(.item(target))
+            case .children(let minimumSize):
+                guard let children = try? fileSystem.children(of: target.url) else {
+                    if fileSystem.exists(target.url) { inaccessiblePaths.append(target.url.path) }
+                    continue
+                }
+                jobs.append(contentsOf: children.map { .child($0, parent: target, minimumSize: minimumSize) })
+            }
+        }
+        return PreparedScanJobs(jobs: jobs, inaccessiblePaths: inaccessiblePaths)
+    }
+
+    private func candidate(for job: ScanJob) -> CleanupCandidate? {
+        switch job {
+        case .item(let target):
+            return candidate(for: target)
+        case .child(let child, let target, let minimumSize):
             let size = fileSystem.allocatedSize(of: child)
-            guard size >= minimumSize else { continue }
-
-            candidates.append(CleanupCandidate(
+            guard size >= minimumSize else { return nil }
+            return CleanupCandidate(
                 id: child.path,
                 name: nameProvider.displayName(for: child),
                 detail: target.detail,
@@ -88,7 +128,7 @@ struct StorageScanner: StorageScanning {
                 strategy: target.safety == .analysisOnly ? .none : .trash(child),
                 size: size,
                 modifiedAt: fileSystem.modificationDate(of: child)
-            ))
+            )
         }
     }
 
@@ -122,4 +162,19 @@ struct StorageScanner: StorageScanning {
             available: Int64(values?.volumeAvailableCapacity ?? 0)
         )
     }
+}
+
+private struct TargetScanResult: Sendable {
+    var candidates: [CleanupCandidate]
+    var inaccessiblePaths: [String] = []
+}
+
+private struct PreparedScanJobs: Sendable {
+    let jobs: [ScanJob]
+    let inaccessiblePaths: [String]
+}
+
+private enum ScanJob: Sendable {
+    case item(ScanTarget)
+    case child(URL, parent: ScanTarget, minimumSize: Int64)
 }

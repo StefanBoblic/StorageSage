@@ -81,7 +81,7 @@ enum CleanupStrategy: Hashable, Sendable {
     case none
 }
 
-struct CleanupCandidate: Identifiable, Hashable {
+struct CleanupCandidate: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let detail: String
@@ -95,14 +95,14 @@ struct CleanupCandidate: Identifiable, Hashable {
     var isCleanable: Bool { strategy != .none }
 }
 
-struct VolumeSnapshot {
+struct VolumeSnapshot: Sendable {
     var total: Int64 = 0
     var available: Int64 = 0
     var used: Int64 { max(total - available, 0) }
     var usedFraction: Double { total > 0 ? Double(used) / Double(total) : 0 }
 }
 
-struct ScanResult {
+struct ScanResult: Sendable {
     var candidates: [CleanupCandidate]
     var volume: VolumeSnapshot
     var inaccessiblePaths: [String]
@@ -112,7 +112,31 @@ struct ScanResult {
 struct CleanupReport {
     var reclaimed: Int64 = 0
     var removedCount: Int = 0
+    var previewedCount: Int = 0
+    var estimatedReclaimable: Int64 = 0
+    var skipped: [String] = []
     var errors: [String] = []
+    var isDryRun = false
+}
+
+struct CleanupProgress: Equatable, Sendable {
+    let totalBytes: Int64
+    let totalCount: Int
+    let isDryRun: Bool
+    var processedBytes: Int64 = 0
+    var removedBytes: Int64 = 0
+    var processedCount: Int = 0
+
+    var fractionCompleted: Double {
+        if totalBytes > 0 {
+            return min(Double(processedBytes) / Double(totalBytes), 1)
+        }
+        return totalCount > 0 ? min(Double(processedCount) / Double(totalCount), 1) : 0
+    }
+
+    var displayedBytes: Int64 {
+        isDryRun ? processedBytes : removedBytes
+    }
 }
 
 extension Int64 {

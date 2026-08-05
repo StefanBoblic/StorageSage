@@ -27,8 +27,21 @@ protocol ScanTargetProviding: Sendable {
 }
 
 struct DefaultScanTargetProvider: ScanTargetProviding {
+    private let dynamicResolvers: [any DynamicScanTargetResolving]
+
+    init(dynamicResolvers: [any DynamicScanTargetResolving] = [
+        XcodeScanTargetResolver(),
+        GradleScanTargetResolver()
+    ]) {
+        self.dynamicResolvers = dynamicResolvers
+    }
+
     func targets() -> [ScanTarget] {
-        ScanRuleCatalog.targets.compactMap(resolve)
+        let resolved = ScanRuleCatalog.targets.compactMap(resolve)
+            + dynamicResolvers.flatMap { $0.targets() }
+        return resolved.reduce(into: [String: ScanTarget]()) { targets, target in
+            targets[target.url.standardizedFileURL.path] = target
+        }.map(\.value)
     }
 
     func protectedURLs() -> [URL] {
@@ -98,36 +111,6 @@ private struct ProtectedLocationDefinition: Sendable {
 
 private enum ScanRuleCatalog {
     static let targets: [ScanRuleDefinition] = [
-        .init(
-            base: .userLibrary,
-            components: ["Developer", "Xcode", "DerivedData"],
-            name: "Xcode Derived Data",
-            detail: "Build products and indexes. Xcode recreates them when needed.",
-            category: .xcode,
-            safety: .safe,
-            mode: .item
-        ),
-        .init(
-            base: .userLibrary,
-            components: ["Developer", "Xcode", "UserData", "Previews"],
-            name: "SwiftUI Preview Data",
-            detail: "Generated preview content that Xcode can rebuild.",
-            category: .xcode,
-            safety: .safe,
-            mode: .item
-        ),
-        .init(
-            base: .userLibrary,
-            components: ["Developer", "Xcode", "iOS DeviceSupport"],
-            name: "iOS Device Support",
-            detail: "Debug symbols for connected iOS versions. They are downloaded again when required.",
-            category: .xcode,
-            safety: .review,
-            mode: .item
-        ),
-        .init(base: .home, components: [".gradle", "caches"], name: "Gradle Caches", detail: "Downloaded and generated Gradle artifacts.", category: .developer, safety: .safe, mode: .item),
-        .init(base: .home, components: [".gradle", "daemon"], name: "Gradle Daemon Data", detail: "Logs and state from Gradle daemon processes.", category: .developer, safety: .safe, mode: .item),
-        .init(base: .home, components: [".gradle", "jdks"], name: "Gradle-managed JDKs", detail: "JDK installations downloaded and managed by Gradle.", category: .developer, safety: .review, mode: .item),
         .init(base: .home, components: [".konan"], name: "Kotlin/Native Toolchains", detail: "Kotlin/Native compilers and platform dependencies.", category: .developer, safety: .review, mode: .item),
         .init(base: .home, components: [".rbenv"], name: "rbenv Installations", detail: "Ruby versions and packages managed by rbenv.", category: .developer, safety: .review, mode: .item),
         .init(base: .home, components: [".local", "share"], name: "Local Developer Data", detail: "Data created by command-line developer tools.", category: .developer, safety: .review, mode: .item),

@@ -16,6 +16,12 @@ protocol FileSystemInspecting: Sendable {
 }
 
 struct FileSystemInspector: FileSystemInspecting {
+    private let commands: any CommandRunning
+
+    init(commands: any CommandRunning = CommandRunner()) {
+        self.commands = commands
+    }
+
     func children(of directory: URL) throws -> [URL] {
         try FileManager.default.contentsOfDirectory(
             at: directory,
@@ -26,6 +32,7 @@ struct FileSystemInspector: FileSystemInspecting {
 
     func allocatedSize(of url: URL) -> Int64 {
         let keys: Set<URLResourceKey> = [
+            .isDirectoryKey,
             .isRegularFileKey,
             .fileAllocatedSizeKey,
             .totalFileAllocatedSizeKey,
@@ -36,7 +43,28 @@ struct FileSystemInspector: FileSystemInspecting {
         if root.isRegularFile == true {
             return Int64(root.totalFileAllocatedSize ?? root.fileAllocatedSize ?? 0)
         }
+        if root.isDirectory == true, let fastSize = diskUsageSize(of: url) {
+            return fastSize
+        }
 
+        return enumeratedAllocatedSize(of: url, keys: keys)
+    }
+
+    private func diskUsageSize(of url: URL) -> Int64? {
+        guard
+            let result = commands.run("du", arguments: ["-sk", url.path], timeout: 30),
+            result.terminationStatus == 0,
+            let output = String(data: result.output, encoding: .utf8),
+            let kilobytesText = output.split(whereSeparator: \.isWhitespace).first,
+            let kilobytes = Int64(kilobytesText)
+        else { return nil }
+        return kilobytes * 1_024
+    }
+
+    private func enumeratedAllocatedSize(
+        of url: URL,
+        keys: Set<URLResourceKey>
+    ) -> Int64 {
         guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: Array(keys),
