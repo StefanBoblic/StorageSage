@@ -11,6 +11,10 @@ let package = Package(
         .executableTarget(
             name: "StorageSage",
             path: "Sources/StorageSage"
+        ),
+        .testTarget(
+            name: "StorageSageTests",
+            dependencies: ["StorageSage"]
         )
     ],
     swiftLanguageModes: [.v5]

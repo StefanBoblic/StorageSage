@@ -23,7 +23,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     }
 }
 
-enum StorageCategory: String, CaseIterable, Identifiable, Codable {
+enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
     case simulators = "Simulators"
     case xcode = "Xcode"
     case caches = "Caches"
@@ -54,7 +54,7 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum SafetyLevel: String, Codable {
+enum SafetyLevel: String, Codable, Sendable {
     case safe = "Safe to Remove"
     case review = "Review First"
     case analysisOnly = "Analysis Only"
@@ -75,7 +75,7 @@ enum SafetyLevel: String, Codable {
     }
 }
 
-enum CleanupStrategy: Hashable {
+enum CleanupStrategy: Hashable, Sendable {
     case trash(URL)
     case deleteUnavailableSimulators
     case none

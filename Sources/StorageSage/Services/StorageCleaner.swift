@@ -12,6 +12,12 @@ protocol StorageCleaning: Sendable {
 }
 
 struct StorageCleaner: StorageCleaning {
+    private let executables: any ExecutableLocating
+
+    init(executables: any ExecutableLocating = PathExecutableLocator()) {
+        self.executables = executables
+    }
+
     func clean(_ candidates: [CleanupCandidate]) -> CleanupReport {
         var report = CleanupReport()
 
@@ -38,8 +44,16 @@ struct StorageCleaner: StorageCleaning {
     }
 
     private func deleteUnavailableSimulators() throws {
+        guard let xcrun = executables.locate("xcrun") else {
+            throw NSError(
+                domain: "StorageSage",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "xcrun could not be found in PATH."]
+            )
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        process.executableURL = xcrun
         process.arguments = ["simctl", "delete", "unavailable"]
         let errorPipe = Pipe()
         process.standardError = errorPipe

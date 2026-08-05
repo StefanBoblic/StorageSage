@@ -25,6 +25,12 @@ ViewModels/   Observable UI state and service orchestration
 Views/        SwiftUI screens and reusable components
 ```
 
+`StorageScanner` is path-agnostic. Scan locations are supplied through
+`ScanTargetProviding`, system folders are resolved with `FileManager` search-path
+APIs, and developer-specific locations live in a declarative rule catalog.
+Specialized analysis, such as unavailable Simulator devices, is isolated behind
+`StorageAnalyzing` and injected into the scanner.
+
 `StorageViewModel` owns the screen state and depends on the `StorageScanning` and
 `StorageCleaning` protocols. Views never scan or mutate the filesystem directly.
 
