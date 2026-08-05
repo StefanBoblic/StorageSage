@@ -54,7 +54,7 @@ final class StorageViewModel: ObservableObject {
         isScanning = true
         errorMessage = nil
         let scanner = scanner
-        let result = await Task.detached(priority: .userInitiated) { scanner.scan() }.value
+        let result = await Task.detached(priority: .userInitiated) { await scanner.scan() }.value
         candidates = result.candidates
         volume = result.volume
         inaccessiblePaths = result.inaccessiblePaths

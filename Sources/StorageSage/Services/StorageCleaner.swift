@@ -12,29 +12,49 @@ protocol StorageCleaning: Sendable {
 }
 
 struct StorageCleaner: StorageCleaning {
-    private let executables: any ExecutableLocating
+    private let policy: any DeletionPolicyEvaluating
+    private let configuration: any CleanupConfigurationProviding
+    private let processGuard: any CleanupProcessGuarding
+    private let commands: any CommandRunning
 
-    init(executables: any ExecutableLocating = PathExecutableLocator()) {
-        self.executables = executables
+    init(
+        policy: any DeletionPolicyEvaluating = DefaultDeletionPolicy(),
+        configuration: any CleanupConfigurationProviding = UserDefaultsCleanupConfiguration(),
+        processGuard: any CleanupProcessGuarding = CleanupProcessGuard(),
+        commands: any CommandRunning = CommandRunner()
+    ) {
+        self.policy = policy
+        self.configuration = configuration
+        self.processGuard = processGuard
+        self.commands = commands
     }
 
     func clean(_ candidates: [CleanupCandidate]) -> CleanupReport {
-        var report = CleanupReport()
+        var report = CleanupReport(isDryRun: configuration.isDryRunEnabled)
 
         for candidate in candidates {
-            do {
-                switch candidate.strategy {
-                case .trash(let url):
-                    guard FileManager.default.fileExists(atPath: url.path) else { continue }
-                    var resultingURL: NSURL?
-                    try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
-                case .deleteUnavailableSimulators:
-                    try deleteUnavailableSimulators()
-                case .none:
-                    continue
+            let decision = policy.evaluate(candidate)
+            guard case .allowed = decision else {
+                if case .denied(let reason) = decision {
+                    report.skipped.append("\(candidate.name): \(reason)")
                 }
-                report.reclaimed += candidate.size
-                report.removedCount += 1
+                continue
+            }
+            if let reason = processGuard.blockingReason(for: candidate) {
+                report.skipped.append("\(candidate.name): \(reason)")
+                continue
+            }
+            if report.isDryRun {
+                report.previewedCount += 1
+                report.estimatedReclaimable += candidate.size
+                continue
+            }
+
+            do {
+                if try execute(candidate) {
+                    report.reclaimed += candidate.size
+                    report.removedCount += 1
+                }
             } catch {
                 report.errors.append("\(candidate.name): \(error.localizedDescription)")
             }
@@ -43,31 +63,41 @@ struct StorageCleaner: StorageCleaning {
         return report
     }
 
+    private func execute(_ candidate: CleanupCandidate) throws -> Bool {
+        switch candidate.strategy {
+        case .trash(let url):
+            guard FileManager.default.fileExists(atPath: url.path) else { return false }
+            var resultingURL: NSURL?
+            try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
+            return true
+        case .deleteUnavailableSimulators:
+            try deleteUnavailableSimulators()
+            return true
+        case .none:
+            return false
+        }
+    }
+
     private func deleteUnavailableSimulators() throws {
-        guard let xcrun = executables.locate("xcrun") else {
-            throw NSError(
-                domain: "StorageSage",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "xcrun could not be found in PATH."]
-            )
+        guard let result = commands.run(
+            "xcrun",
+            arguments: ["simctl", "delete", "unavailable"],
+            timeout: 60
+        ) else {
+            throw cleanupError("xcrun could not be run.")
         }
-
-        let process = Process()
-        process.executableURL = xcrun
-        process.arguments = ["simctl", "delete", "unavailable"]
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8) ?? "simctl returned an error."
-            throw NSError(
-                domain: "StorageSage",
-                code: Int(process.terminationStatus),
-                userInfo: [NSLocalizedDescriptionKey: message]
-            )
+        guard result.terminationStatus == 0 else {
+            let message = String(data: result.errorOutput, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw cleanupError(message?.isEmpty == false ? message! : "simctl returned an error.")
         }
+    }
+
+    private func cleanupError(_ message: String) -> NSError {
+        NSError(
+            domain: "StorageSage",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
     }
 }

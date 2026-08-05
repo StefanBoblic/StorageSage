@@ -81,7 +81,7 @@ enum CleanupStrategy: Hashable, Sendable {
     case none
 }
 
-struct CleanupCandidate: Identifiable, Hashable {
+struct CleanupCandidate: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let detail: String
@@ -112,7 +112,11 @@ struct ScanResult {
 struct CleanupReport {
     var reclaimed: Int64 = 0
     var removedCount: Int = 0
+    var previewedCount: Int = 0
+    var estimatedReclaimable: Int64 = 0
+    var skipped: [String] = []
     var errors: [String] = []
+    var isDryRun = false
 }
 
 extension Int64 {

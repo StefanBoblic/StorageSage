@@ -31,6 +31,19 @@ APIs, and developer-specific locations live in a declarative rule catalog.
 Specialized analysis, such as unavailable Simulator devices, is isolated behind
 `StorageAnalyzing` and injected into the scanner.
 
+Independent filesystem jobs use a bounded Swift task group. The global limit is
+configurable in Settings, so large cache roots can be measured concurrently
+without creating an unbounded number of filesystem walkers.
+
+Before cleanup, every candidate passes through `DeletionPolicy`. The policy
+rejects protected macOS and user-data locations, resolves symlinks, blocks path
+traversal, and honors the persistent user whitelist. Dry Run validates the same
+pipeline and reports estimated reclaimable space without changing files.
+
+Xcode and Gradle locations are resolved dynamically when possible. StorageSage
+reads Xcode's custom Derived Data preference and `GRADLE_USER_HOME`, then falls
+back to standard macOS locations.
+
 `StorageViewModel` owns the screen state and depends on the `StorageScanning` and
 `StorageCleaning` protocols. Views never scan or mutate the filesystem directly.
 
