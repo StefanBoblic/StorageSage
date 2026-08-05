@@ -2,6 +2,15 @@
 
 StorageSage is a native SwiftUI storage analyzer and cleanup assistant for macOS.
 
+## Install with Homebrew
+
+```sh
+brew install --cask --no-quarantine stefanboblic/tap/storagesage
+```
+
+`--no-quarantine` is currently required because the downloadable app is ad-hoc
+signed rather than notarized with an Apple Developer ID certificate.
+
 ## Architecture
 
 The app follows MVVM with explicit dependency boundaries:
