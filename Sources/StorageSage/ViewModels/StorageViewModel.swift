@@ -18,6 +18,7 @@ final class StorageViewModel: ObservableObject {
     @Published private(set) var isCleaning = false
     @Published private(set) var selectedIDs: Set<String> = []
     @Published private(set) var lastReport: CleanupReport?
+    @Published private(set) var cleanupProgress: CleanupProgress?
     @Published private(set) var errorMessage: String?
 
     private let scanner: any StorageScanning
@@ -85,9 +86,19 @@ final class StorageViewModel: ObservableObject {
         guard !selection.isEmpty else { return }
         isCleaning = true
         let cleaner = cleaner
+        let (progressStream, progressContinuation) = AsyncStream<CleanupProgress>.makeStream()
+        let progressTask = Task { [weak self] in
+            for await progress in progressStream {
+                self?.cleanupProgress = progress
+            }
+        }
         let report = await Task.detached(priority: .userInitiated) {
-            cleaner.clean(selection)
+            cleaner.clean(selection) { progress in
+                progressContinuation.yield(progress)
+            }
         }.value
+        progressContinuation.finish()
+        await progressTask.value
 
         lastReport = report
         selectedIDs.removeAll()

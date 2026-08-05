@@ -8,7 +8,10 @@
 import Foundation
 
 protocol StorageCleaning: Sendable {
-    func clean(_ candidates: [CleanupCandidate]) -> CleanupReport
+    func clean(
+        _ candidates: [CleanupCandidate],
+        progress: @escaping @Sendable (CleanupProgress) -> Void
+    ) -> CleanupReport
 }
 
 struct StorageCleaner: StorageCleaning {
@@ -29,10 +32,25 @@ struct StorageCleaner: StorageCleaning {
         self.commands = commands
     }
 
-    func clean(_ candidates: [CleanupCandidate]) -> CleanupReport {
+    func clean(
+        _ candidates: [CleanupCandidate],
+        progress progressHandler: @escaping @Sendable (CleanupProgress) -> Void = { _ in }
+    ) -> CleanupReport {
         var report = CleanupReport(isDryRun: configuration.isDryRunEnabled)
+        var cleanupProgress = CleanupProgress(
+            totalBytes: candidates.reduce(0) { $0 + $1.size },
+            totalCount: candidates.count,
+            isDryRun: report.isDryRun
+        )
+        progressHandler(cleanupProgress)
 
         for candidate in candidates {
+            defer {
+                cleanupProgress.processedBytes += candidate.size
+                cleanupProgress.processedCount += 1
+                progressHandler(cleanupProgress)
+            }
+
             let decision = policy.evaluate(candidate)
             guard case .allowed = decision else {
                 if case .denied(let reason) = decision {
@@ -54,6 +72,7 @@ struct StorageCleaner: StorageCleaning {
                 if try execute(candidate) {
                     report.reclaimed += candidate.size
                     report.removedCount += 1
+                    cleanupProgress.removedBytes += candidate.size
                 }
             } catch {
                 report.errors.append("\(candidate.name): \(error.localizedDescription)")

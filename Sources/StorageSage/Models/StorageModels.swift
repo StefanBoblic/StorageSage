@@ -119,6 +119,26 @@ struct CleanupReport {
     var isDryRun = false
 }
 
+struct CleanupProgress: Equatable, Sendable {
+    let totalBytes: Int64
+    let totalCount: Int
+    let isDryRun: Bool
+    var processedBytes: Int64 = 0
+    var removedBytes: Int64 = 0
+    var processedCount: Int = 0
+
+    var fractionCompleted: Double {
+        if totalBytes > 0 {
+            return min(Double(processedBytes) / Double(totalBytes), 1)
+        }
+        return totalCount > 0 ? min(Double(processedCount) / Double(totalCount), 1) : 0
+    }
+
+    var displayedBytes: Int64 {
+        isDryRun ? processedBytes : removedBytes
+    }
+}
+
 extension Int64 {
     var fileSize: String {
         ByteCountFormatter.string(fromByteCount: self, countStyle: .file)

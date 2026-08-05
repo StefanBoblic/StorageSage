@@ -103,7 +103,9 @@ struct CleanupView: View {
                 Text(viewModel.selectedSize.fileSize).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if viewModel.isCleaning { ProgressView().controlSize(.small) }
+            if let progress = viewModel.cleanupProgress {
+                CleanupProgressSummary(progress: progress)
+            }
             Button(dryRun ? "Preview Selected" : "Remove Selected") { showingConfirmation = true }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
@@ -139,5 +141,29 @@ struct CleanupView: View {
             lines.append("Errors:\n" + report.errors.joined(separator: "\n"))
         }
         return lines.joined(separator: "\n\n")
+    }
+}
+
+private struct CleanupProgressSummary: View {
+    let progress: CleanupProgress
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 5) {
+            HStack(spacing: 5) {
+                Text(progress.isDryRun ? "Validated" : "Removed")
+                    .foregroundStyle(.secondary)
+                Text("\(progress.displayedBytes.fileSize) / \(progress.totalBytes.fileSize)")
+                    .monospacedDigit()
+                    .fontWeight(.medium)
+            }
+            .font(.caption)
+
+            ProgressView(value: progress.fractionCompleted)
+                .progressViewStyle(.linear)
+                .frame(width: 180)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(progress.isDryRun ? "Cleanup validation progress" : "Cleanup removal progress")
+        .accessibilityValue("\(Int(progress.fractionCompleted * 100)) percent")
     }
 }

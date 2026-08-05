@@ -20,13 +20,16 @@ final class StorageCleanerTests: XCTestCase {
             processGuard: OpenProcessGuard(),
             commands: NoopCommands()
         )
+        let progressRecorder = ProgressRecorder()
 
-        let report = cleaner.clean([candidate])
+        let report = cleaner.clean([candidate]) { progressRecorder.record($0) }
 
         XCTAssertTrue(report.isDryRun)
         XCTAssertEqual(report.previewedCount, 1)
         XCTAssertEqual(report.estimatedReclaimable, candidate.size)
         XCTAssertEqual(report.removedCount, 0)
+        XCTAssertEqual(progressRecorder.values.last?.processedBytes, candidate.size)
+        XCTAssertEqual(progressRecorder.values.last?.fractionCompleted, 1)
     }
 
     func testDeletionPolicyRejectsSensitiveUserDirectory() throws {
@@ -94,4 +97,17 @@ private struct EmptyWhitelist: WhitelistProviding {
 private struct FixedWhitelist: WhitelistProviding {
     let url: URL
     func whitelistedURLs() -> [URL] { [url] }
+}
+
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [CleanupProgress] = []
+
+    var values: [CleanupProgress] {
+        lock.withLock { storage }
+    }
+
+    func record(_ progress: CleanupProgress) {
+        lock.withLock { storage.append(progress) }
+    }
 }
