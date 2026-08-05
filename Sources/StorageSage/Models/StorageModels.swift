@@ -95,14 +95,14 @@ struct CleanupCandidate: Identifiable, Hashable, Sendable {
     var isCleanable: Bool { strategy != .none }
 }
 
-struct VolumeSnapshot {
+struct VolumeSnapshot: Sendable {
     var total: Int64 = 0
     var available: Int64 = 0
     var used: Int64 { max(total - available, 0) }
     var usedFraction: Double { total > 0 ? Double(used) / Double(total) : 0 }
 }
 
-struct ScanResult {
+struct ScanResult: Sendable {
     var candidates: [CleanupCandidate]
     var volume: VolumeSnapshot
     var inaccessiblePaths: [String]
