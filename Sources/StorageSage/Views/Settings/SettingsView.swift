@@ -84,7 +84,7 @@ struct SettingsView: View {
             }
 
             Section("About") {
-                LabeledContent("StorageSage", value: "1.0")
+                LabeledContent("StorageSage", value: appVersion)
                 Text("A private, on-device storage analyzer for macOS.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -93,6 +93,10 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .onAppear(perform: reloadWhitelist)
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"
     }
 
     private func chooseWhitelistFolder() {
