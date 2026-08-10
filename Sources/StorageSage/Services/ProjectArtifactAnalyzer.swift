@@ -31,14 +31,21 @@ struct SpotlightProjectRootLocator: ProjectRootLocating {
             arguments: ["-0", "-onlyin", searchRoot.path, query],
             timeout: 20
         ), result.terminationStatus == 0 else { return [] }
+        let generatedComponents: Set<String> = [
+            "node_modules", ".build", "checkouts", "Pods", ".gradle", "build", ".venv", "venv", "DerivedData", ".git"
+        ]
         return Array(Set(result.output.split(separator: 0).compactMap { bytes -> URL? in
             guard let path = String(data: Data(bytes), encoding: .utf8) else { return nil }
-            return URL(fileURLWithPath: path).deletingLastPathComponent().standardizedFileURL
+            let marker = URL(fileURLWithPath: path).standardizedFileURL
+            guard generatedComponents.isDisjoint(with: Set(marker.pathComponents)) else { return nil }
+            return marker.deletingLastPathComponent()
         })).sorted { $0.path < $1.path }
     }
 }
 
 struct ProjectArtifactAnalyzer: RecommendationAnalyzing {
+    let id = "project-artifacts"
+    let title = "Project Artifacts"
     private let roots: any ProjectRootLocating
     private let fileSystem: any FileSystemInspecting
     private let minimumSize: Int64
@@ -58,30 +65,39 @@ struct ProjectArtifactAnalyzer: RecommendationAnalyzing {
 
     func analyze() -> [CleanupCandidate] {
         let fileManager = FileManager.default
-        var candidatesByPath: [String: CleanupCandidate] = [:]
+        let exclusionMatcher = exclusions.matcher()
+        var pendingByPath: [String: PendingProjectArtifact] = [:]
 
-        for projectRoot in roots.projectRoots() where !exclusions.excludes(projectRoot) {
+        for projectRoot in roots.projectRoots() where !exclusionMatcher.excludes(projectRoot) {
             let markerNames = Set((try? fileManager.contentsOfDirectory(atPath: projectRoot.path)) ?? [])
             let artifactNames = artifactNames(for: markerNames)
             for name in artifactNames {
                 let artifactURL = projectRoot.appendingPathComponent(name, isDirectory: true)
-                guard fileSystem.exists(artifactURL), !exclusions.excludes(artifactURL) else { continue }
-                let size = fileSystem.allocatedSize(of: artifactURL)
-                guard size >= minimumSize else { continue }
-                candidatesByPath[artifactURL.standardizedFileURL.path] = CleanupCandidate(
-                    id: "project-artifact:\(artifactURL.standardizedFileURL.path)",
-                    name: "\(projectRoot.lastPathComponent) / \(name)",
-                    detail: "Rebuildable output detected from project markers.",
-                    path: artifactURL.standardizedFileURL.path,
-                    category: .projectArtifacts,
-                    safety: .review,
-                    strategy: .trashReviewedDirectory(artifactURL.standardizedFileURL),
-                    size: size,
-                    modifiedAt: fileSystem.modificationDate(of: artifactURL)
+                guard fileSystem.exists(artifactURL), !exclusionMatcher.excludes(artifactURL) else { continue }
+                pendingByPath[artifactURL.standardizedFileURL.path] = PendingProjectArtifact(
+                    projectName: projectRoot.lastPathComponent,
+                    artifactName: name,
+                    url: artifactURL.standardizedFileURL
                 )
             }
         }
-        return candidatesByPath.values.sorted { $0.size > $1.size }
+        let pending = Array(pendingByPath.values)
+        let sizes = fileSystem.allocatedSizes(of: pending.map(\.url))
+        return pending.compactMap { artifact -> CleanupCandidate? in
+            let size = sizes[artifact.url] ?? 0
+            guard size >= minimumSize else { return nil }
+            return CleanupCandidate(
+                id: "project-artifact:\(artifact.url.path)",
+                name: "\(artifact.projectName) / \(artifact.artifactName)",
+                detail: "Rebuildable output detected from project markers.",
+                path: artifact.url.path,
+                category: .projectArtifacts,
+                safety: .review,
+                strategy: .trashReviewedDirectory(artifact.url),
+                size: size,
+                modifiedAt: fileSystem.modificationDate(of: artifact.url)
+            )
+        }.sorted { $0.size > $1.size }
     }
 
     private func artifactNames(for markers: Set<String>) -> Set<String> {
@@ -97,4 +113,10 @@ struct ProjectArtifactAnalyzer: RecommendationAnalyzing {
         }
         return names
     }
+}
+
+private struct PendingProjectArtifact {
+    let projectName: String
+    let artifactName: String
+    let url: URL
 }
