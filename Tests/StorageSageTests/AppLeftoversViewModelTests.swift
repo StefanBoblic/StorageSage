@@ -31,13 +31,28 @@ final class AppLeftoversViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.selectedIDs.isEmpty)
     }
 
-    private func makeRecord(path: String, size: Int64) -> AppLeftoverRecord {
+    func testToggleAllSkipsUnavailableRecords() async {
+        let accessible = makeRecord(path: "/virtual/com.example.accessible", size: 10)
+        let unavailable = makeRecord(path: "/virtual/com.example.protected", size: 20, canMoveToTrash: false)
+        let viewModel = AppLeftoversViewModel(
+            analyzer: StubAppLeftoverAnalyzer(records: [accessible, unavailable])
+        )
+
+        await viewModel.scan()
+        viewModel.toggleAll()
+
+        XCTAssertEqual(viewModel.selectedIDs, [accessible.id])
+        XCTAssertEqual(viewModel.unavailableRecords.map(\.id), [unavailable.id])
+    }
+
+    private func makeRecord(path: String, size: Int64, canMoveToTrash: Bool = true) -> AppLeftoverRecord {
         AppLeftoverRecord(
             url: URL(fileURLWithPath: path),
             bundleIdentifier: URL(fileURLWithPath: path).lastPathComponent,
             locationName: "Caches",
             size: size,
-            modifiedAt: nil
+            modifiedAt: nil,
+            canMoveToTrash: canMoveToTrash
         )
     }
 }

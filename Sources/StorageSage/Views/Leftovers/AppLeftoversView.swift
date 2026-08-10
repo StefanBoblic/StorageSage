@@ -5,6 +5,7 @@
 //  Created by Stefan Boblic on 10.08.2026.
 //
 
+import AppKit
 import SwiftUI
 
 struct AppLeftoversView: View {
@@ -14,6 +15,7 @@ struct AppLeftoversView: View {
     @AppStorage(StoragePreferenceKeys.dryRun) private var dryRun = false
     @State private var showingConfirmation = false
     @State private var showingReport = false
+    @State private var showingUnavailableItems = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,13 +45,22 @@ struct AppLeftoversView: View {
                  ? "StorageSage will validate \(viewModel.selectedSize.fileSize). No files will be changed."
                  : "Move \(viewModel.selectedSize.fileSize) of possible leftovers to Trash? Review the bundle identifiers carefully before continuing.")
         }
+        .alert("Some Leftovers Are Unavailable", isPresented: $showingUnavailableItems) {
+            if !viewModel.selectedIDs.isEmpty {
+                Button("Continue with Available Items") { showingConfirmation = true }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text(unavailableItemsMessage)
+        }
         .alert("Leftover Cleanup Finished", isPresented: $showingReport) {
+            if let report = viewModel.lastReport, !report.skipped.isEmpty || !report.errors.isEmpty {
+                Button("Copy Details") { copyReportDetails(report) }
+            }
             Button("Done") { }
         } message: {
             if let report = viewModel.lastReport {
-                Text(report.isDryRun
-                     ? "Validated \(report.previewedCount) items totaling \(report.estimatedReclaimable.fileSize)."
-                     : "Moved \(report.movedToTrashCount) items totaling \(report.movedToTrashBytes.fileSize) to Trash.")
+                Text(reportMessage(report))
             }
         }
     }
@@ -63,10 +74,10 @@ struct AppLeftoversView: View {
             }
             Spacer()
             if !viewModel.records.isEmpty {
-                Button(viewModel.areAllRecordsSelected ? "Deselect All" : "Select All") {
+                Button(selectAllTitle) {
                     viewModel.toggleAll()
                 }
-                .disabled(!viewModel.canModifySelection)
+                .disabled(!viewModel.canModifySelection || viewModel.selectableRecords.isEmpty)
             }
             Button("Analyze Leftovers") { Task { await viewModel.scan() } }
                 .buttonStyle(.borderedProminent)
@@ -87,10 +98,15 @@ struct AppLeftoversView: View {
                         Image(systemName: viewModel.selectedIDs.contains(record.id) ? "checkmark.circle.fill" : "circle")
                     }
                     .buttonStyle(.plain)
-                    .disabled(!viewModel.canModifySelection)
+                    .disabled(!viewModel.canModifySelection || !record.canMoveToTrash)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(record.bundleIdentifier).font(.headline)
                         Text("\(record.locationName) · \(record.url.path)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        if !record.canMoveToTrash {
+                            Label("Full Disk Access required", systemImage: "lock.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                     }
                     Spacer()
                     Text(record.size.fileSize).font(.headline.monospacedDigit())
@@ -109,7 +125,12 @@ struct AppLeftoversView: View {
             Spacer()
             Button {
                 Task {
-                    if await viewModel.prepareSelection() { showingConfirmation = true }
+                    let canContinue = await viewModel.prepareSelection()
+                    if !viewModel.unavailableSelectionNames.isEmpty {
+                        showingUnavailableItems = true
+                    } else if canContinue {
+                        showingConfirmation = true
+                    }
                 }
             } label: {
                 if viewModel.isPreparing { ProgressView().controlSize(.small) }
@@ -120,5 +141,46 @@ struct AppLeftoversView: View {
         }
         .padding(14)
         .background(.bar)
+    }
+
+    private var selectAllTitle: String {
+        if viewModel.areAllRecordsSelected { return "Deselect All" }
+        return viewModel.unavailableRecords.isEmpty ? "Select All" : "Select Available"
+    }
+
+    private var unavailableItemsMessage: String {
+        let names = viewModel.unavailableSelectionNames.prefix(5).joined(separator: ", ")
+        let remaining = viewModel.unavailableSelectionNames.count - min(viewModel.unavailableSelectionNames.count, 5)
+        let suffix = remaining > 0 ? " and \(remaining) more" : ""
+        return "StorageSage cannot move \(names)\(suffix) to Trash. Grant Full Disk Access, then analyze leftovers again."
+    }
+
+    private func reportMessage(_ report: CleanupReport) -> String {
+        if report.isDryRun {
+            var lines = ["Validated \(report.previewedCount) items totaling \(report.estimatedReclaimable.fileSize)."]
+            if !report.skipped.isEmpty { lines.append(issueSummary(title: "Skipped", values: report.skipped)) }
+            if !report.errors.isEmpty { lines.append(issueSummary(title: "Failed", values: report.errors)) }
+            return lines.joined(separator: "\n\n")
+        }
+
+        var lines = ["Moved \(report.movedToTrashCount) items totaling \(report.movedToTrashBytes.fileSize) to Trash."]
+        if !report.skipped.isEmpty { lines.append(issueSummary(title: "Skipped", values: report.skipped)) }
+        if !report.errors.isEmpty { lines.append(issueSummary(title: "Failed", values: report.errors)) }
+        return lines.joined(separator: "\n\n")
+    }
+
+    private func issueSummary(title: String, values: [String]) -> String {
+        let visible = values.prefix(3).joined(separator: "\n")
+        let remaining = values.count - min(values.count, 3)
+        let suffix = remaining > 0 ? "\n…and \(remaining) more. Use Copy Details for the full report." : ""
+        return "\(title) \(values.count) items:\n\(visible)\(suffix)"
+    }
+
+    private func copyReportDetails(_ report: CleanupReport) {
+        var sections: [String] = []
+        if !report.skipped.isEmpty { sections.append("Skipped:\n" + report.skipped.joined(separator: "\n")) }
+        if !report.errors.isEmpty { sections.append("Errors:\n" + report.errors.joined(separator: "\n")) }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(sections.joined(separator: "\n\n"), forType: .string)
     }
 }

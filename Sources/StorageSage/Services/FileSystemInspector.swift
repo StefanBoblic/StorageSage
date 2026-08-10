@@ -14,12 +14,15 @@ protocol FileSystemInspecting: Sendable {
     func modificationDate(of url: URL) -> Date?
     func exists(_ url: URL) -> Bool
     func isReadable(_ url: URL) -> Bool
+    func canMoveToTrash(_ url: URL) -> Bool
 }
 
 extension FileSystemInspecting {
     func allocatedSizes(of urls: [URL]) -> [URL: Int64] {
         Dictionary(uniqueKeysWithValues: urls.map { ($0, allocatedSize(of: $0)) })
     }
+
+    func canMoveToTrash(_ url: URL) -> Bool { true }
 }
 
 struct FileSystemInspector: FileSystemInspecting {
@@ -128,5 +131,10 @@ struct FileSystemInspector: FileSystemInspecting {
 
     func isReadable(_ url: URL) -> Bool {
         FileManager.default.isReadableFile(atPath: url.path)
+    }
+
+    func canMoveToTrash(_ url: URL) -> Bool {
+        let parent = url.standardizedFileURL.deletingLastPathComponent()
+        return exists(url) && FileManager.default.isWritableFile(atPath: parent.path)
     }
 }

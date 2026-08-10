@@ -16,6 +16,7 @@ final class AppLeftoversViewModel: ObservableObject {
     @Published private(set) var isPreparing = false
     @Published private(set) var isCleaning = false
     @Published private(set) var lastReport: CleanupReport?
+    @Published private(set) var unavailableSelectionNames: [String] = []
 
     private let analyzer: any AppLeftoverAnalyzing
     private let preflight: any CleanupPreflightMeasuring
@@ -32,16 +33,19 @@ final class AppLeftoversViewModel: ObservableObject {
     }
 
     var selectedRecords: [AppLeftoverRecord] { records.filter { selectedIDs.contains($0.id) } }
+    var selectableRecords: [AppLeftoverRecord] { records.filter(\.canMoveToTrash) }
+    var unavailableRecords: [AppLeftoverRecord] { records.filter { !$0.canMoveToTrash } }
     var selectedSize: Int64 { selectedRecords.reduce(0) { $0 + $1.size } }
     var canModifySelection: Bool { !isScanning && !isPreparing && !isCleaning }
     var areAllRecordsSelected: Bool {
-        !records.isEmpty && selectedIDs.count == records.count
+        !selectableRecords.isEmpty && selectedIDs == Set(selectableRecords.map(\.id))
     }
 
     func scan() async {
         guard !isScanning else { return }
         isScanning = true
         selectedIDs.removeAll()
+        unavailableSelectionNames = []
         let analyzer = analyzer
         records = await Task.detached(priority: .utility) { analyzer.analyze() }.value
         isScanning = false
@@ -52,19 +56,19 @@ final class AppLeftoversViewModel: ObservableObject {
     }
 
     func toggle(_ record: AppLeftoverRecord) {
-        guard canModifySelection else { return }
-        lastReport = nil
+        guard canModifySelection, record.canMoveToTrash else { return }
+        resetFeedback()
         if selectedIDs.contains(record.id) { selectedIDs.remove(record.id) }
         else { selectedIDs.insert(record.id) }
     }
 
     func toggleAll() {
         guard canModifySelection, !records.isEmpty else { return }
-        lastReport = nil
+        resetFeedback()
         if areAllRecordsSelected {
             selectedIDs.removeAll()
         } else {
-            selectedIDs = Set(records.map(\.id))
+            selectedIDs = Set(selectableRecords.map(\.id))
         }
     }
 
@@ -77,6 +81,7 @@ final class AppLeftoversViewModel: ObservableObject {
         let preparation = await Task.detached(priority: .userInitiated) {
             preflight.measure(selection.map(\.cleanupCandidate))
         }.value
+        unavailableSelectionNames = preparation.unavailableNames
         let measuredByID = Dictionary(uniqueKeysWithValues: preparation.candidates.map { ($0.id, $0) })
         records = records.compactMap { record in
             guard selectedIDs.contains(record.id) else { return record }
@@ -86,7 +91,8 @@ final class AppLeftoversViewModel: ObservableObject {
                 bundleIdentifier: record.bundleIdentifier,
                 locationName: record.locationName,
                 size: candidate.size,
-                modifiedAt: candidate.modifiedAt
+                modifiedAt: candidate.modifiedAt,
+                canMoveToTrash: true
             )
         }
         selectedIDs.formIntersection(Set(preparation.candidates.map(\.id)))
@@ -112,5 +118,10 @@ final class AppLeftoversViewModel: ObservableObject {
 
     func reveal(_ record: AppLeftoverRecord) {
         NSWorkspace.shared.activateFileViewerSelecting([record.url])
+    }
+
+    private func resetFeedback() {
+        lastReport = nil
+        unavailableSelectionNames = []
     }
 }
