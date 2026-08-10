@@ -12,6 +12,9 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case cleanup = "Cleanup"
     case applications = "Applications"
+    case largeFiles = "Large Files"
+    case leftovers = "App Leftovers"
+    case duplicates = "Duplicates"
 
     var id: String { rawValue }
     var icon: String {
@@ -19,8 +22,63 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .overview: return "chart.pie.fill"
         case .cleanup: return "sparkles"
         case .applications: return "square.grid.2x2.fill"
+        case .largeFiles: return "doc.badge.magnifyingglass"
+        case .leftovers: return "shippingbox.and.arrow.backward.fill"
+        case .duplicates: return "doc.on.doc.fill"
         }
     }
+}
+
+struct LargeFileRecord: Identifiable, Hashable, Sendable {
+    let url: URL
+    let size: Int64
+    let modifiedAt: Date?
+
+    var id: String { url.path }
+    var name: String { url.lastPathComponent }
+}
+
+struct AppLeftoverRecord: Identifiable, Hashable, Sendable {
+    let url: URL
+    let bundleIdentifier: String
+    let locationName: String
+    let size: Int64
+    let modifiedAt: Date?
+
+    var id: String { url.path }
+    var name: String { url.lastPathComponent }
+
+    var cleanupCandidate: CleanupCandidate {
+        CleanupCandidate(
+            id: id,
+            name: name,
+            detail: "Possible leftover from \(bundleIdentifier) in \(locationName).",
+            path: url.path,
+            category: .appData,
+            safety: .review,
+            strategy: .trash(url),
+            size: size,
+            modifiedAt: modifiedAt
+        )
+    }
+}
+
+struct DuplicateFileRecord: Identifiable, Hashable, Sendable {
+    let url: URL
+    let size: Int64
+    let modifiedAt: Date?
+
+    var id: String { url.path }
+    var name: String { url.lastPathComponent }
+}
+
+struct DuplicateGroup: Identifiable, Hashable, Sendable {
+    let fingerprint: String
+    let files: [DuplicateFileRecord]
+
+    var id: String { fingerprint }
+    var fileSize: Int64 { files.first?.size ?? 0 }
+    var reclaimableSize: Int64 { fileSize * Int64(max(files.count - 1, 0)) }
 }
 
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -93,6 +151,26 @@ struct CleanupCandidate: Identifiable, Hashable, Sendable {
     let modifiedAt: Date?
 
     var isCleanable: Bool { strategy != .none }
+
+    func replacing(size: Int64, modifiedAt: Date?) -> CleanupCandidate {
+        CleanupCandidate(
+            id: id,
+            name: name,
+            detail: detail,
+            path: path,
+            category: category,
+            safety: safety,
+            strategy: strategy,
+            size: size,
+            modifiedAt: modifiedAt
+        )
+    }
+}
+
+struct CleanupPreparation: Sendable {
+    let candidates: [CleanupCandidate]
+    let unavailableNames: [String]
+    let measuredAt: Date
 }
 
 struct VolumeSnapshot: Sendable {
@@ -121,9 +199,15 @@ struct CleanupReport {
     var skipped: [String] = []
     var errors: [String] = []
     var isDryRun = false
+    var availableBytesBefore: Int64?
+    var availableBytesAfter: Int64?
 
     var removedCount: Int { movedToTrashCount + deletedImmediatelyCount }
     var handledBytes: Int64 { movedToTrashBytes + deletedImmediatelyBytes }
+    var actualFreedBytes: Int64? {
+        guard let availableBytesBefore, let availableBytesAfter else { return nil }
+        return max(availableBytesAfter - availableBytesBefore, 0)
+    }
 }
 
 struct CleanupProgress: Equatable, Sendable {
