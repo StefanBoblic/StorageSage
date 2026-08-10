@@ -30,7 +30,7 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
 
         let url: URL
         switch candidate.strategy {
-        case .trash(let targetURL):
+        case .trash(let targetURL), .trashReviewedFile(let targetURL), .trashReviewedDirectory(let targetURL):
             url = targetURL
         case .deleteUnavailableSimulators:
             url = URL(fileURLWithPath: candidate.path, isDirectory: true)
@@ -64,7 +64,17 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
         let matchesProtectedSubtree = protected.subtrees.contains { root in
             contains(literalURL, in: root) || contains(resolvedURL, in: root)
         }
-        if matchesExactRoot || matchesProtectedSubtree {
+        let isReviewedPersonalFile: Bool
+        switch candidate.strategy {
+        case .trashReviewedFile, .trashReviewedDirectory:
+            isReviewedPersonalFile = protected.personalReviewRoots.contains {
+                contains(literalURL, in: $0) && literalURL.path != $0.path
+                    && contains(resolvedURL, in: $0) && resolvedURL.path != $0.path
+            }
+        default:
+            isReviewedPersonalFile = false
+        }
+        if matchesExactRoot || (matchesProtectedSubtree && !isReviewedPersonalFile) {
             return .denied("StorageSage protects this location from deletion.")
         }
 
@@ -75,7 +85,7 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
         whitelist.whitelistedURLs().contains { contains(url, in: $0.resolvingSymlinksInPath()) }
     }
 
-    private func protectedLocations() -> (exact: [URL], subtrees: [URL]) {
+    private func protectedLocations() -> (exact: [URL], subtrees: [URL], personalReviewRoots: [URL]) {
         let fileManager = FileManager.default
         let home = fileManager.homeDirectoryForCurrentUser
         var exact = [
@@ -95,6 +105,7 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
             home.appendingPathComponent(".Trash", isDirectory: true)
         ]
 
+        var personalReviewRoots: [URL] = []
         for directory in [
             FileManager.SearchPathDirectory.desktopDirectory,
             .documentDirectory,
@@ -103,7 +114,9 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
             .musicDirectory,
             .picturesDirectory
         ] {
-            subtrees.append(contentsOf: fileManager.urls(for: directory, in: .userDomainMask))
+            let urls = fileManager.urls(for: directory, in: .userDomainMask)
+            subtrees.append(contentsOf: urls)
+            personalReviewRoots.append(contentsOf: urls)
         }
 
         if let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first {
@@ -114,7 +127,8 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
         }
         return (
             exact.map { $0.standardizedFileURL },
-            subtrees.map { $0.standardizedFileURL }
+            subtrees.map { $0.standardizedFileURL },
+            personalReviewRoots.map { $0.standardizedFileURL }
         )
     }
 

@@ -13,6 +13,10 @@ struct StorageSageApp: App {
     @StateObject private var largeFilesViewModel = LargeFilesViewModel()
     @StateObject private var appLeftoversViewModel = AppLeftoversViewModel()
     @StateObject private var duplicatesViewModel = DuplicatesViewModel()
+    @StateObject private var fileChanges = FSEventsMonitor()
+    @StateObject private var recommendationsViewModel = RecommendationsViewModel()
+    @StateObject private var snapshotsViewModel = APFSSnapshotsViewModel()
+    @StateObject private var cleanupHistory = CleanupHistoryViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -21,8 +25,13 @@ struct StorageSageApp: App {
                 .environmentObject(largeFilesViewModel)
                 .environmentObject(appLeftoversViewModel)
                 .environmentObject(duplicatesViewModel)
+                .environmentObject(fileChanges)
+                .environmentObject(recommendationsViewModel)
+                .environmentObject(snapshotsViewModel)
+                .environmentObject(cleanupHistory)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
+                .task { fileChanges.start() }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {

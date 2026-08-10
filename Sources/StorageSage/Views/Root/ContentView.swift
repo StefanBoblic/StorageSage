@@ -43,6 +43,9 @@ struct ContentView: View {
                 case .largeFiles: LargeFilesView()
                 case .leftovers: AppLeftoversView()
                 case .duplicates: DuplicatesView()
+                case .recommendations: RecommendationsView()
+                case .snapshots: APFSSnapshotsView()
+                case .history: CleanupHistoryView()
                 }
             }
             .toolbar {

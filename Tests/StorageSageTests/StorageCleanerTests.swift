@@ -92,6 +92,26 @@ final class StorageCleanerTests: XCTestCase {
         )
     }
 
+    func testDeletionPolicyAllowsOnlyExplicitlyReviewedFilesInPersonalFolders() throws {
+        let downloads = try XCTUnwrap(FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first)
+        let url = downloads.appendingPathComponent("old-installer.dmg")
+        let regularCandidate = makeCandidate(url: url)
+        let reviewedCandidate = CleanupCandidate(
+            id: url.path,
+            name: "old-installer.dmg",
+            detail: "Reviewed",
+            path: url.path,
+            category: .installers,
+            safety: .review,
+            strategy: .trashReviewedFile(url),
+            size: 1_024,
+            modifiedAt: nil
+        )
+
+        XCTAssertNotEqual(DefaultDeletionPolicy(whitelist: EmptyWhitelist()).evaluate(regularCandidate), .allowed)
+        XCTAssertEqual(DefaultDeletionPolicy(whitelist: EmptyWhitelist()).evaluate(reviewedCandidate), .allowed)
+    }
+
     func testCleanupReportsActualIncreaseInAvailableSpace() {
         let candidate = CleanupCandidate(
             id: "simulators",

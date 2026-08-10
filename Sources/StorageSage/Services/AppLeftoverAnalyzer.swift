@@ -15,15 +15,18 @@ struct AppLeftoverAnalyzer: AppLeftoverAnalyzing {
     private let libraryURL: URL?
     private let installedBundleIdentifiers: Set<String>?
     private let fileSystem: any FileSystemInspecting
+    private let exclusions: any ScanExclusionProviding
 
     init(
         libraryURL: URL? = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first,
         installedBundleIdentifiers: Set<String>? = nil,
-        fileSystem: any FileSystemInspecting = FileSystemInspector()
+        fileSystem: any FileSystemInspecting = FileSystemInspector(),
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
         self.libraryURL = libraryURL
         self.installedBundleIdentifiers = installedBundleIdentifiers
         self.fileSystem = fileSystem
+        self.exclusions = exclusions
     }
 
     func analyze() -> [AppLeftoverRecord] {
@@ -41,6 +44,7 @@ struct AppLeftoverAnalyzer: AppLeftoverAnalyzing {
             let directory = libraryURL.appendingPathComponent(location.component, isDirectory: true)
             guard let children = try? fileSystem.children(of: directory) else { continue }
             for child in children {
+                guard !exclusions.excludes(child) else { continue }
                 let identifier = normalizedIdentifier(from: child.lastPathComponent, suffix: location.suffix)
                 guard isBundleIdentifier(identifier),
                       !identifier.hasPrefix("com.apple."),

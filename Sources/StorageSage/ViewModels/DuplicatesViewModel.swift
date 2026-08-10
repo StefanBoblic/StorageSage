@@ -17,6 +17,7 @@ final class DuplicatesViewModel: ObservableObject {
     @Published private(set) var isVerifying = false
     @Published private(set) var isCleaning = false
     @Published private(set) var lastReport: CleanupReport?
+    @Published private(set) var isStale = false
     @Published var minimumSize: Int64 = 1_000_000
 
     private let analyzer: any DuplicateFileAnalyzing
@@ -45,7 +46,15 @@ final class DuplicatesViewModel: ObservableObject {
         let analyzer = analyzer
         let threshold = minimumSize
         groups = await analyzer.analyze(minimumSize: threshold)
+        isStale = false
         isScanning = false
+    }
+
+    func noteFileChanges(_ batch: FileChangeBatch) {
+        guard !groups.isEmpty else { return }
+        if batch.requiresFullRescan || batch.affects(LargeFileAnalyzer.defaultRoots()) {
+            isStale = true
+        }
     }
 
     func toggle(_ file: DuplicateFileRecord, in group: DuplicateGroup) {

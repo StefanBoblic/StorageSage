@@ -9,6 +9,7 @@ import SwiftUI
 
 struct CleanupView: View {
     @EnvironmentObject private var viewModel: StorageViewModel
+    @EnvironmentObject private var history: CleanupHistoryViewModel
     @AppStorage(StoragePreferenceKeys.dryRun) private var dryRun = false
     @State private var searchText = ""
     @State private var category: StorageCategory?
@@ -50,7 +51,11 @@ struct CleanupView: View {
         ) {
             Button(dryRun ? "Validate Selection" : "Continue", role: dryRun ? nil : .destructive) {
                 Task {
+                    let selectedCandidates = viewModel.selectedCandidates
                     await viewModel.cleanSelected()
+                    if let report = viewModel.lastReport {
+                        history.record(source: "Cleanup", candidates: selectedCandidates, report: report)
+                    }
                     showingReport = true
                 }
             }

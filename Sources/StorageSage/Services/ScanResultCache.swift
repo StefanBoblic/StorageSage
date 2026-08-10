@@ -78,6 +78,8 @@ private struct CachedScanResult: Codable {
 private struct CachedCandidate: Codable {
     enum Strategy: String, Codable {
         case trash
+        case trashReviewedFile
+        case trashReviewedDirectory
         case deleteUnavailableSimulators
         case none
     }
@@ -103,6 +105,8 @@ private struct CachedCandidate: Codable {
         modifiedAt = candidate.modifiedAt
         switch candidate.strategy {
         case .trash: strategy = .trash
+        case .trashReviewedFile: strategy = .trashReviewedFile
+        case .trashReviewedDirectory: strategy = .trashReviewedDirectory
         case .deleteUnavailableSimulators: strategy = .deleteUnavailableSimulators
         case .none: strategy = .none
         }
@@ -112,6 +116,8 @@ private struct CachedCandidate: Codable {
         let cleanupStrategy: CleanupStrategy
         switch strategy {
         case .trash: cleanupStrategy = .trash(URL(fileURLWithPath: path))
+        case .trashReviewedFile: cleanupStrategy = .trashReviewedFile(URL(fileURLWithPath: path))
+        case .trashReviewedDirectory: cleanupStrategy = .trashReviewedDirectory(URL(fileURLWithPath: path))
         case .deleteUnavailableSimulators: cleanupStrategy = .deleteUnavailableSimulators
         case .none: cleanupStrategy = .none
         }

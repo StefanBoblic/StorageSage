@@ -15,6 +15,9 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case largeFiles = "Large Files"
     case leftovers = "App Leftovers"
     case duplicates = "Duplicates"
+    case recommendations = "Recommendations"
+    case snapshots = "APFS Snapshots"
+    case history = "Cleanup History"
 
     var id: String { rawValue }
     var icon: String {
@@ -25,6 +28,9 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .largeFiles: return "doc.badge.magnifyingglass"
         case .leftovers: return "shippingbox.and.arrow.backward.fill"
         case .duplicates: return "doc.on.doc.fill"
+        case .recommendations: return "lightbulb.fill"
+        case .snapshots: return "clock.arrow.trianglehead.counterclockwise.rotate.90"
+        case .history: return "clock.fill"
         }
     }
 }
@@ -81,6 +87,40 @@ struct DuplicateGroup: Identifiable, Hashable, Sendable {
     var reclaimableSize: Int64 { fileSize * Int64(max(files.count - 1, 0)) }
 }
 
+struct APFSSnapshotRecord: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let createdAt: Date?
+    let isPurgeable: Bool
+    let limitsContainerShrink: Bool
+
+    var kind: String {
+        if name.hasPrefix("com.apple.TimeMachine") { return "Time Machine" }
+        if name.hasPrefix("com.apple.os.update") { return "macOS Update" }
+        return "APFS"
+    }
+}
+
+struct CleanupHistoryItem: Identifiable, Codable, Hashable, Sendable {
+    let path: String
+    let name: String
+    let estimatedBytes: Int64
+    var id: String { path }
+}
+
+struct CleanupHistoryRecord: Identifiable, Codable, Hashable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    let source: String
+    let items: [CleanupHistoryItem]
+    let movedToTrashBytes: Int64
+    let deletedImmediatelyBytes: Int64
+    let actualFreedBytes: Int64?
+    let isDryRun: Bool
+    let errorCount: Int
+    let skippedCount: Int
+}
+
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
     case simulators = "Simulators"
     case xcode = "Xcode"
@@ -88,6 +128,8 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
     case developer = "Developer Tools"
     case appData = "App Data"
     case applications = "Applications"
+    case installers = "Installers & Archives"
+    case projectArtifacts = "Project Artifacts"
 
     var id: String { rawValue }
     var icon: String {
@@ -98,6 +140,8 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
         case .developer: return "terminal.fill"
         case .appData: return "externaldrive.fill"
         case .applications: return "app.fill"
+        case .installers: return "shippingbox.fill"
+        case .projectArtifacts: return "hammer.circle.fill"
         }
     }
     var color: Color {
@@ -108,6 +152,8 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
         case .developer: return .purple
         case .appData: return .teal
         case .applications: return .pink
+        case .installers: return .mint
+        case .projectArtifacts: return .cyan
         }
     }
 }
@@ -135,6 +181,8 @@ enum SafetyLevel: String, Codable, Sendable {
 
 enum CleanupStrategy: Hashable, Sendable {
     case trash(URL)
+    case trashReviewedFile(URL)
+    case trashReviewedDirectory(URL)
     case deleteUnavailableSimulators
     case none
 }

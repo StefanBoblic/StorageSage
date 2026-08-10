@@ -19,6 +19,7 @@ final class LargeFilesViewModel: ObservableObject {
     @Published private(set) var files: [LargeFileRecord] = []
     @Published private(set) var isScanning = false
     @Published private(set) var scannedAt: Date?
+    @Published private(set) var isStale = false
     @Published var minimumSize: Int64 = 500_000_000
     @Published var sortOrder: SortOrder = .largest
 
@@ -46,7 +47,15 @@ final class LargeFilesViewModel: ObservableObject {
             analyzer.analyze(minimumSize: threshold)
         }.value
         scannedAt = Date()
+        isStale = false
         isScanning = false
+    }
+
+    func noteFileChanges(_ batch: FileChangeBatch) {
+        guard scannedAt != nil else { return }
+        if batch.requiresFullRescan || batch.affects(LargeFileAnalyzer.defaultRoots()) {
+            isStale = true
+        }
     }
 
     func reveal(_ file: LargeFileRecord) {
