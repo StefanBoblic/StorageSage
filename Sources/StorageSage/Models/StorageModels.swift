@@ -13,6 +13,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case cleanup = "Cleanup"
     case applications = "Applications"
     case largeFiles = "Large Files"
+    case leftovers = "App Leftovers"
 
     var id: String { rawValue }
     var icon: String {
@@ -21,6 +22,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .cleanup: return "sparkles"
         case .applications: return "square.grid.2x2.fill"
         case .largeFiles: return "doc.badge.magnifyingglass"
+        case .leftovers: return "shippingbox.and.arrow.backward.fill"
         }
     }
 }
@@ -32,6 +34,31 @@ struct LargeFileRecord: Identifiable, Hashable, Sendable {
 
     var id: String { url.path }
     var name: String { url.lastPathComponent }
+}
+
+struct AppLeftoverRecord: Identifiable, Hashable, Sendable {
+    let url: URL
+    let bundleIdentifier: String
+    let locationName: String
+    let size: Int64
+    let modifiedAt: Date?
+
+    var id: String { url.path }
+    var name: String { url.lastPathComponent }
+
+    var cleanupCandidate: CleanupCandidate {
+        CleanupCandidate(
+            id: id,
+            name: name,
+            detail: "Possible leftover from \(bundleIdentifier) in \(locationName).",
+            path: url.path,
+            category: .appData,
+            safety: .review,
+            strategy: .trash(url),
+            size: size,
+            modifiedAt: modifiedAt
+        )
+    }
 }
 
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {

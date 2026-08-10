@@ -41,6 +41,7 @@ struct ContentView: View {
                 case .cleanup: CleanupView()
                 case .applications: ApplicationsView()
                 case .largeFiles: LargeFilesView()
+                case .leftovers: AppLeftoversView()
                 }
             }
             .toolbar {

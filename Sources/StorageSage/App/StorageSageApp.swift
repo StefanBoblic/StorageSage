@@ -11,12 +11,14 @@ import SwiftUI
 struct StorageSageApp: App {
     @StateObject private var viewModel = StorageViewModel()
     @StateObject private var largeFilesViewModel = LargeFilesViewModel()
+    @StateObject private var appLeftoversViewModel = AppLeftoversViewModel()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(viewModel)
                 .environmentObject(largeFilesViewModel)
+                .environmentObject(appLeftoversViewModel)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
         }
