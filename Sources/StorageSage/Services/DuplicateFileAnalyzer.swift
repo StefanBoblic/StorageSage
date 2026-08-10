@@ -20,15 +20,18 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
     private let roots: [URL]
     private let maximumConcurrentHashes: Int
     private let fileSystem: any FileSystemInspecting
+    private let exclusions: any ScanExclusionProviding
 
     init(
         roots: [URL] = LargeFileAnalyzer.defaultRoots(),
         maximumConcurrentHashes: Int = 4,
-        fileSystem: any FileSystemInspecting = FileSystemInspector()
+        fileSystem: any FileSystemInspecting = FileSystemInspector(),
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
         self.roots = roots
         self.maximumConcurrentHashes = max(maximumConcurrentHashes, 1)
         self.fileSystem = fileSystem
+        self.exclusions = exclusions
     }
 
     func analyze(minimumSize: Int64) async -> [DuplicateGroup] {
@@ -104,7 +107,7 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
         var probesByPath: [String: FileProbe] = [:]
         let fileManager = FileManager.default
 
-        for root in roots where fileManager.fileExists(atPath: root.path) {
+        for root in roots where fileManager.fileExists(atPath: root.path) && !exclusions.excludes(root) {
             guard let enumerator = fileManager.enumerator(
                 at: root,
                 includingPropertiesForKeys: Array(keys),
@@ -112,6 +115,10 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
                 errorHandler: { _, _ in true }
             ) else { continue }
             for case let url as URL in enumerator {
+                if exclusions.excludes(url) {
+                    enumerator.skipDescendants()
+                    continue
+                }
                 guard let values = try? url.resourceValues(forKeys: keys),
                       values.isRegularFile == true,
                       values.isSymbolicLink != true else { continue }

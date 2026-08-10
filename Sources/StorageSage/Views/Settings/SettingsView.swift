@@ -13,8 +13,10 @@ struct SettingsView: View {
     @AppStorage(StoragePreferenceKeys.maximumConcurrentScans)
     private var maximumConcurrentScans = UserDefaultsScanConfiguration.recommendedConcurrency
     @State private var whitelistPaths: [String] = []
+    @State private var exclusionPaths: [String] = []
 
     private let whitelistStore = UserDefaultsWhitelistStore()
+    private let exclusionStore = UserDefaultsScanExclusionStore()
 
     var body: some View {
         Form {
@@ -64,6 +66,31 @@ struct SettingsView: View {
                 Text("More tasks can speed up SSD scans, but values above 6 may increase disk contention.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Deep Scan Exclusions")
+                        Spacer()
+                        Button("Exclude Folder…", action: chooseExclusionFolder)
+                    }
+                    Text("Large Files, Duplicates, Recommendations, and Leftovers will skip these locations.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(exclusionPaths, id: \.self) { path in
+                        HStack {
+                            Image(systemName: "folder.badge.minus").foregroundStyle(.secondary)
+                            Text(abbreviated(path)).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Button {
+                                exclusionStore.remove(path: path)
+                                reloadExclusions()
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove Scan Exclusion")
+                        }
+                    }
+                }
             }
 
             Section("Privacy") {
@@ -92,7 +119,10 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .onAppear(perform: reloadWhitelist)
+        .onAppear {
+            reloadWhitelist()
+            reloadExclusions()
+        }
     }
 
     private var appVersion: String {
@@ -115,6 +145,23 @@ struct SettingsView: View {
 
     private func reloadWhitelist() {
         whitelistPaths = whitelistStore.whitelistedURLs().map(\.path).sorted()
+    }
+
+    private func chooseExclusionFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Exclude a Folder from Deep Scans"
+        panel.prompt = "Exclude"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            exclusionStore.add(url)
+            reloadExclusions()
+        }
+    }
+
+    private func reloadExclusions() {
+        exclusionPaths = exclusionStore.excludedURLs().map(\.path).sorted()
     }
 
     private func abbreviated(_ path: String) -> String {

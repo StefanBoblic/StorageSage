@@ -17,19 +17,22 @@ struct InstallerArchiveAnalyzer: RecommendationAnalyzing {
     private let minimumAge: TimeInterval
     private let now: @Sendable () -> Date
     private let fileSystem: any FileSystemInspecting
+    private let exclusions: any ScanExclusionProviding
 
     init(
         roots: [URL] = InstallerArchiveAnalyzer.defaultRoots(),
         minimumSize: Int64 = 10_000_000,
         minimumAge: TimeInterval = 30 * 24 * 60 * 60,
         now: @escaping @Sendable () -> Date = { Date() },
-        fileSystem: any FileSystemInspecting = FileSystemInspector()
+        fileSystem: any FileSystemInspecting = FileSystemInspector(),
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
         self.roots = roots
         self.minimumSize = minimumSize
         self.minimumAge = minimumAge
         self.now = now
         self.fileSystem = fileSystem
+        self.exclusions = exclusions
     }
 
     func analyze() -> [CleanupCandidate] {
@@ -38,7 +41,7 @@ struct InstallerArchiveAnalyzer: RecommendationAnalyzing {
         let cutoff = now().addingTimeInterval(-minimumAge)
         var candidates: [CleanupCandidate] = []
 
-        for root in roots where fileManager.fileExists(atPath: root.path) {
+        for root in roots where fileManager.fileExists(atPath: root.path) && !exclusions.excludes(root) {
             guard let enumerator = fileManager.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.contentModificationDateKey, .isSymbolicLinkKey],
@@ -46,6 +49,10 @@ struct InstallerArchiveAnalyzer: RecommendationAnalyzing {
                 errorHandler: { _, _ in true }
             ) else { continue }
             for case let url as URL in enumerator {
+                if exclusions.excludes(url) {
+                    enumerator.skipDescendants()
+                    continue
+                }
                 guard extensions.contains(url.pathExtension.lowercased()) else { continue }
                 enumerator.skipDescendants()
                 guard let modifiedAt = fileSystem.modificationDate(of: url), modifiedAt <= cutoff else { continue }

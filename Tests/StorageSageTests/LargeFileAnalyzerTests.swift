@@ -42,6 +42,22 @@ final class LargeFileAnalyzerTests: XCTestCase {
 
         XCTAssertEqual(results.map(\.name), ["indexed.bin"])
     }
+
+    func testSkipsExcludedSubtrees() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let excluded = root.appendingPathComponent("Private", isDirectory: true)
+        try FileManager.default.createDirectory(at: excluded, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 1, count: 100_000).write(to: excluded.appendingPathComponent("large.bin"))
+
+        let results = LargeFileAnalyzer(
+            roots: [root],
+            spotlight: UnavailableSpotlight(),
+            exclusions: FixedExclusions(urls: [excluded])
+        ).analyze(minimumSize: 50_000)
+
+        XCTAssertTrue(results.isEmpty)
+    }
 }
 
 private struct UnavailableSpotlight: SpotlightFileQuerying {
@@ -51,4 +67,9 @@ private struct UnavailableSpotlight: SpotlightFileQuerying {
 private struct FixedSpotlight: SpotlightFileQuerying {
     let files: [URL]
     func files(in root: URL, minimumSize: Int64) -> [URL]? { files }
+}
+
+private struct FixedExclusions: ScanExclusionProviding {
+    let urls: [URL]
+    func excludedURLs() -> [URL] { urls }
 }

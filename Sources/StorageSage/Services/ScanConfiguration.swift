@@ -11,6 +11,7 @@ enum StoragePreferenceKeys {
     static let dryRun = "cleanup.dryRun"
     static let whitelist = "cleanup.whitelist"
     static let maximumConcurrentScans = "scanner.maximumConcurrentTasks"
+    static let scanExclusions = "scanner.excludedLocations"
 }
 
 protocol ScanConfigurationProviding: Sendable {

@@ -42,27 +42,30 @@ struct ProjectArtifactAnalyzer: RecommendationAnalyzing {
     private let roots: any ProjectRootLocating
     private let fileSystem: any FileSystemInspecting
     private let minimumSize: Int64
+    private let exclusions: any ScanExclusionProviding
 
     init(
         roots: any ProjectRootLocating = SpotlightProjectRootLocator(),
         fileSystem: any FileSystemInspecting = FileSystemInspector(),
-        minimumSize: Int64 = 10_000_000
+        minimumSize: Int64 = 10_000_000,
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
         self.roots = roots
         self.fileSystem = fileSystem
         self.minimumSize = minimumSize
+        self.exclusions = exclusions
     }
 
     func analyze() -> [CleanupCandidate] {
         let fileManager = FileManager.default
         var candidatesByPath: [String: CleanupCandidate] = [:]
 
-        for projectRoot in roots.projectRoots() {
+        for projectRoot in roots.projectRoots() where !exclusions.excludes(projectRoot) {
             let markerNames = Set((try? fileManager.contentsOfDirectory(atPath: projectRoot.path)) ?? [])
             let artifactNames = artifactNames(for: markerNames)
             for name in artifactNames {
                 let artifactURL = projectRoot.appendingPathComponent(name, isDirectory: true)
-                guard fileSystem.exists(artifactURL) else { continue }
+                guard fileSystem.exists(artifactURL), !exclusions.excludes(artifactURL) else { continue }
                 let size = fileSystem.allocatedSize(of: artifactURL)
                 guard size >= minimumSize else { continue }
                 candidatesByPath[artifactURL.standardizedFileURL.path] = CleanupCandidate(

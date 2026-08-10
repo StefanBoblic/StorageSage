@@ -14,13 +14,16 @@ protocol LargeFileAnalyzing: Sendable {
 struct LargeFileAnalyzer: LargeFileAnalyzing {
     private let roots: [URL]
     private let spotlight: any SpotlightFileQuerying
+    private let exclusions: any ScanExclusionProviding
 
     init(
         roots: [URL] = LargeFileAnalyzer.defaultRoots(),
-        spotlight: any SpotlightFileQuerying = SpotlightFileQuery()
+        spotlight: any SpotlightFileQuerying = SpotlightFileQuery(),
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
         self.roots = roots
         self.spotlight = spotlight
+        self.exclusions = exclusions
     }
 
     func analyze(minimumSize: Int64) -> [LargeFileRecord] {
@@ -36,10 +39,10 @@ struct LargeFileAnalyzer: LargeFileAnalyzing {
         var records: [LargeFileRecord] = []
         let fileManager = FileManager.default
 
-        for root in roots where fileManager.fileExists(atPath: root.path) {
+        for root in roots where fileManager.fileExists(atPath: root.path) && !exclusions.excludes(root) {
             if let spotlightURLs = spotlight.files(in: root, minimumSize: minimumSize) {
                 records.append(contentsOf: spotlightURLs.compactMap {
-                    record(for: $0, minimumSize: minimumSize, keys: Set(keys))
+                    exclusions.excludes($0) ? nil : record(for: $0, minimumSize: minimumSize, keys: Set(keys))
                 })
                 continue
             }
@@ -51,6 +54,10 @@ struct LargeFileAnalyzer: LargeFileAnalyzing {
             ) else { continue }
 
             for case let url as URL in enumerator {
+                if exclusions.excludes(url) {
+                    enumerator.skipDescendants()
+                    continue
+                }
                 if let record = record(for: url, minimumSize: minimumSize, keys: Set(keys)) {
                     records.append(record)
                 }
