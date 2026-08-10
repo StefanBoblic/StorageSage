@@ -52,6 +52,7 @@ struct AppLeftoverRecord: Identifiable, Hashable, Sendable {
     let locationName: String
     let size: Int64
     let modifiedAt: Date?
+    var canMoveToTrash = true
 
     var id: String { url.path }
     var name: String { url.lastPathComponent }

@@ -37,6 +37,10 @@ struct CleanupPreflightService: CleanupPreflightMeasuring {
                     unavailableNames.append(candidate.name)
                     continue
                 }
+                guard fileSystem.canMoveToTrash(url) else {
+                    unavailableNames.append(candidate.name)
+                    continue
+                }
                 measured.append(candidate.replacing(
                     size: fileSystem.allocatedSize(of: url),
                     modifiedAt: fileSystem.modificationDate(of: url)

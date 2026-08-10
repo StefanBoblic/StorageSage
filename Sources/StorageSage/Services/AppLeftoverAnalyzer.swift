@@ -66,7 +66,8 @@ struct AppLeftoverAnalyzer: AppLeftoverAnalyzing {
                 bundleIdentifier: identifier,
                 locationName: locationName,
                 size: size,
-                modifiedAt: fileSystem.modificationDate(of: url)
+                modifiedAt: fileSystem.modificationDate(of: url),
+                canMoveToTrash: fileSystem.canMoveToTrash(url)
             )
         }
         return records.sorted { $0.size > $1.size }
