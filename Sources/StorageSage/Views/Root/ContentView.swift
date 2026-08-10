@@ -51,6 +51,7 @@ struct ContentView: View {
                 case .history: CleanupHistoryView()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .toolbar {
                 ToolbarItem {
                     Button {
