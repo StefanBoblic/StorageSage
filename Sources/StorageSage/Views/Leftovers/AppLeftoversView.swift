@@ -62,6 +62,12 @@ struct AppLeftoversView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if !viewModel.records.isEmpty {
+                Button(viewModel.areAllRecordsSelected ? "Deselect All" : "Select All") {
+                    viewModel.toggleAll()
+                }
+                .disabled(!viewModel.canModifySelection)
+            }
             Button("Analyze Leftovers") { Task { await viewModel.scan() } }
                 .buttonStyle(.borderedProminent)
                 .disabled(viewModel.isScanning || viewModel.isCleaning)

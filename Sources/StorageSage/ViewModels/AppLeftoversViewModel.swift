@@ -34,6 +34,9 @@ final class AppLeftoversViewModel: ObservableObject {
     var selectedRecords: [AppLeftoverRecord] { records.filter { selectedIDs.contains($0.id) } }
     var selectedSize: Int64 { selectedRecords.reduce(0) { $0 + $1.size } }
     var canModifySelection: Bool { !isScanning && !isPreparing && !isCleaning }
+    var areAllRecordsSelected: Bool {
+        !records.isEmpty && selectedIDs.count == records.count
+    }
 
     func scan() async {
         guard !isScanning else { return }
@@ -53,6 +56,16 @@ final class AppLeftoversViewModel: ObservableObject {
         lastReport = nil
         if selectedIDs.contains(record.id) { selectedIDs.remove(record.id) }
         else { selectedIDs.insert(record.id) }
+    }
+
+    func toggleAll() {
+        guard canModifySelection, !records.isEmpty else { return }
+        lastReport = nil
+        if areAllRecordsSelected {
+            selectedIDs.removeAll()
+        } else {
+            selectedIDs = Set(records.map(\.id))
+        }
     }
 
     @discardableResult
