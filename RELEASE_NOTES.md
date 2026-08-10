@@ -1,43 +1,53 @@
-# StorageSage 1.2.0
+# StorageSage 1.3.0
 
-This release expands StorageSage from a cache cleaner into a broader, faster disk analysis toolkit while keeping cleanup reviewable and local.
+StorageSage 1.3.0 adds private disk-growth tracking and makes the existing analysis workflows faster and more responsive. All history and filesystem analysis remain local to the Mac.
 
-## Highlights
+## Disk Growth Monitor
 
-- Added an on-demand Large Files scanner with configurable thresholds, size/age sorting, a Spotlight fast path, and filesystem fallback.
-- Added a Duplicate Finder with staged SHA-256 verification, bounded parallel hashing, hard-link awareness, and safeguards that preserve at least one copy.
-- Added App Leftovers analysis based on bundle identifiers and installed applications.
-- Added Smart Recommendations for stale installers, archives, and rebuildable Swift, Node.js, CocoaPods, Gradle, and Python project artifacts.
-- Added a read-only APFS Snapshot Inspector based on `diskutil` metadata.
-- Added local Cleanup History with estimated bytes, cleanup actions, affected paths, and the measured change in available disk space.
-- Added Deep Scan exclusions for Large Files, Duplicates, Recommendations, and App Leftovers.
+- Added local storage snapshots for Desktop, Documents, Downloads, media, caches, Application Support, applications, containers, and developer data.
+- Added used-space charts and comparisons against the last snapshot, a baseline, 24 hours, 7 days, 30 days, or the complete retained history.
+- Separates tracked folder changes from unattributed System, APFS, purgeable, and inaccessible storage changes.
+- Uses coalesced FSEvents to remeasure only affected buckets and limits automatic snapshots to once every 15 minutes.
+- Keeps detailed recent history, downsamples older snapshots, and never stores file contents or a complete file listing.
 
-## Accuracy and safety
+## Faster analysis
 
-- Cleanup totals are remeasured immediately before confirmation.
-- The interface now distinguishes bytes moved to Trash from bytes deleted immediately.
-- Cleanup results report the actual before/after change in available disk space.
-- Duplicate candidates are fully re-verified before confirmation and immediately before cleanup.
-- Selection is temporarily locked while estimates refresh, and stale cleanup progress no longer carries into a new operation.
-- Cleanup remains opt-in, protected paths are rejected, and user files are moved to Trash whenever possible.
+- Added bounded parallel filesystem work and batched directory-size measurements.
+- Added a shared, FSEvents-invalidated metadata index for Large Files and Duplicate Finder.
+- Added Spotlight-first installer discovery with a safe filesystem fallback.
+- Smart Recommendations now loads cached results immediately, runs analyzers in parallel, and publishes each section as it completes.
+- Overview now streams progress and partial results while the live scan is running.
+- Cleanup screens update optimistically and avoid unnecessary full rescans after successful removal.
+- Hardened command output handling so large Spotlight results cannot block child processes.
 
-## Performance and interface
+## Interface and workflow improvements
 
-- Added bounded parallel scanning and hashing with a configurable concurrency limit.
-- Added cached Overview results followed by a live refresh.
-- Added `du` and Spotlight fast paths with safe filesystem fallbacks.
-- Added FSEvents-based stale-result tracking for Large Files.
-- Fixed the Large Files sidebar icon and refreshed the release documentation.
+- Added Select All and Deselect All to App Leftovers.
+- Empty Installers & Archives recommendations are hidden after analysis completes.
+- Fixed toolbar refresh buttons showing a spinner and refresh icon simultaneously.
+- Fixed empty tab content moving to the vertical center of the window.
+- Added stable local Apple Development signing discovery and a persistent `com.stefanboblic.StorageSage` bundle identifier.
+- Improved packaging around Finder and File Provider metadata.
 
-## Requirements
+## Measured performance
+
+On the audited development Mac:
+
+- Installers & Archives: approximately 0.77 seconds.
+- Project Artifacts: approximately 3.63 seconds, running in parallel with installer analysis.
+- Overview: approximately 10.29 seconds for 76 real candidates, with cached and progressive results displayed immediately.
+
+Results depend on disk size, directory contents, Spotlight state, and filesystem permissions.
+
+## Requirements and installation
 
 - macOS 14 Sonoma or later
 - Apple silicon Mac
 
-Install with Homebrew:
+Install or upgrade with Homebrew:
 
 ```sh
-brew install --cask stefanboblic/tap/storagesage
+brew upgrade --cask stefanboblic/tap/storagesage
 ```
 
-The downloadable build is ad-hoc signed and is not Apple-notarized yet. On first launch, right-click the app and choose **Open**, or approve it in **System Settings → Privacy & Security** if macOS blocks it.
+The public ZIP remains ad-hoc signed and is not notarized because a Developer ID Application certificate is not configured for distribution. Local development builds use an installed Apple Development identity when available. Because version 1.3.0 changes the bundle identifier and signing identity, macOS may request Files and Folders permissions once again after upgrading; subsequent builds with the same identity should retain them.
