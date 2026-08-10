@@ -110,13 +110,20 @@ struct ScanResult: Sendable {
 }
 
 struct CleanupReport {
-    var reclaimed: Int64 = 0
-    var removedCount: Int = 0
+    var movedToTrashBytes: Int64 = 0
+    var deletedImmediatelyBytes: Int64 = 0
+    var movedToTrashCount: Int = 0
+    var deletedImmediatelyCount: Int = 0
     var previewedCount: Int = 0
     var estimatedReclaimable: Int64 = 0
+    var estimatedTrashBytes: Int64 = 0
+    var estimatedImmediateDeletionBytes: Int64 = 0
     var skipped: [String] = []
     var errors: [String] = []
     var isDryRun = false
+
+    var removedCount: Int { movedToTrashCount + deletedImmediatelyCount }
+    var handledBytes: Int64 { movedToTrashBytes + deletedImmediatelyBytes }
 }
 
 struct CleanupProgress: Equatable, Sendable {
@@ -124,7 +131,9 @@ struct CleanupProgress: Equatable, Sendable {
     let totalCount: Int
     let isDryRun: Bool
     var processedBytes: Int64 = 0
-    var removedBytes: Int64 = 0
+    var eligibleBytes: Int64 = 0
+    var movedToTrashBytes: Int64 = 0
+    var deletedImmediatelyBytes: Int64 = 0
     var processedCount: Int = 0
 
     var fractionCompleted: Double {
@@ -135,7 +144,7 @@ struct CleanupProgress: Equatable, Sendable {
     }
 
     var displayedBytes: Int64 {
-        isDryRun ? processedBytes : removedBytes
+        isDryRun ? eligibleBytes : movedToTrashBytes + deletedImmediatelyBytes
     }
 }
 

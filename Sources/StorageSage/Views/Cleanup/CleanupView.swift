@@ -48,7 +48,7 @@ struct CleanupView: View {
             isPresented: $showingConfirmation,
             titleVisibility: .visible
         ) {
-            Button(dryRun ? "Preview \(viewModel.selectedSize.fileSize)" : "Remove \(viewModel.selectedSize.fileSize)", role: dryRun ? nil : .destructive) {
+            Button(dryRun ? "Validate Selection" : "Continue", role: dryRun ? nil : .destructive) {
                 Task {
                     await viewModel.cleanSelected()
                     showingReport = true
@@ -100,16 +100,28 @@ struct CleanupView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(viewModel.selectedCandidates.count) selected").font(.headline)
-                Text(viewModel.selectedSize.fileSize).font(.caption).foregroundStyle(.secondary)
+                Text("Estimated total: \(viewModel.selectedSize.fileSize)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if viewModel.selectedTrashSize > 0 || viewModel.selectedImmediateDeletionSize > 0 {
+                    Text(selectionBreakdown)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
             Spacer()
+            if viewModel.isScanning || viewModel.isUsingCachedScan {
+                Label("Refreshing size estimates…", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if let progress = viewModel.cleanupProgress {
                 CleanupProgressSummary(progress: progress)
             }
             Button(dryRun ? "Preview Selected" : "Remove Selected") { showingConfirmation = true }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(viewModel.selectedIDs.isEmpty || viewModel.isCleaning)
+                .disabled(!viewModel.canCleanSelection)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -118,21 +130,47 @@ struct CleanupView: View {
 
     private var confirmationMessage: String {
         if dryRun {
-            return "StorageSage will validate every selected item and estimate reclaimable space. No files will be changed."
+            return "StorageSage will validate the current \(viewModel.selectedSize.fileSize) estimate. No files will be changed."
         }
-        let hasSimulator = viewModel.selectedCandidates.contains { $0.strategy == .deleteUnavailableSimulators }
-        if hasSimulator {
-            return "Most selected items will be moved to Trash. Unavailable Simulator devices are deleted by Xcode and cannot be restored. Close affected apps before continuing."
+        var lines: [String] = []
+        if viewModel.selectedTrashSize > 0 {
+            lines.append("Move approximately \(viewModel.selectedTrashSize.fileSize) to Trash. This does not free disk space until Trash is emptied.")
         }
-        return "Selected items will be moved to Trash, where they can be restored. Close affected apps before continuing."
+        if viewModel.selectedImmediateDeletionSize > 0 {
+            lines.append("Delete approximately \(viewModel.selectedImmediateDeletionSize.fileSize) of unavailable Simulator data immediately. This cannot be undone.")
+        }
+        lines.append("Close affected apps before continuing.")
+        return lines.joined(separator: "\n\n")
+    }
+
+    private var selectionBreakdown: String {
+        var parts: [String] = []
+        if viewModel.selectedTrashSize > 0 {
+            parts.append("Trash \(viewModel.selectedTrashSize.fileSize)")
+        }
+        if viewModel.selectedImmediateDeletionSize > 0 {
+            parts.append("Immediate \(viewModel.selectedImmediateDeletionSize.fileSize)")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func reportMessage(_ report: CleanupReport) -> String {
         var lines: [String] = []
         if report.isDryRun {
-            lines.append("\(report.previewedCount) items would be processed, totaling approximately \(report.estimatedReclaimable.fileSize). No files were changed.")
+            lines.append("Validated \(report.previewedCount) items totaling approximately \(report.estimatedReclaimable.fileSize). No files were changed.")
+            if report.estimatedTrashBytes > 0 {
+                lines.append("Would move \(report.estimatedTrashBytes.fileSize) to Trash.")
+            }
+            if report.estimatedImmediateDeletionBytes > 0 {
+                lines.append("Would delete \(report.estimatedImmediateDeletionBytes.fileSize) immediately.")
+            }
         } else {
-            lines.append("Processed \(report.removedCount) items totaling approximately \(report.reclaimed.fileSize). Empty Trash to reclaim space from trashed items.")
+            if report.movedToTrashCount > 0 {
+                lines.append("Moved \(report.movedToTrashCount) items totaling approximately \(report.movedToTrashBytes.fileSize) to Trash. Empty Trash to free this space.")
+            }
+            if report.deletedImmediatelyCount > 0 {
+                lines.append("Deleted \(report.deletedImmediatelyCount) Simulator items totaling approximately \(report.deletedImmediatelyBytes.fileSize) immediately.")
+            }
         }
         if !report.skipped.isEmpty {
             lines.append("Skipped:\n" + report.skipped.joined(separator: "\n"))
@@ -150,7 +188,7 @@ private struct CleanupProgressSummary: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 5) {
             HStack(spacing: 5) {
-                Text(progress.isDryRun ? "Validated" : "Removed")
+                Text(progress.isDryRun ? "Eligible" : "Handled")
                     .foregroundStyle(.secondary)
                 Text("\(progress.displayedBytes.fileSize) / \(progress.totalBytes.fileSize)")
                     .monospacedDigit()
@@ -161,9 +199,14 @@ private struct CleanupProgressSummary: View {
             ProgressView(value: progress.fractionCompleted)
                 .progressViewStyle(.linear)
                 .frame(width: 180)
+            if !progress.isDryRun {
+                Text("Trash \(progress.movedToTrashBytes.fileSize) · Deleted \(progress.deletedImmediatelyBytes.fileSize)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(progress.isDryRun ? "Cleanup validation progress" : "Cleanup removal progress")
+        .accessibilityLabel(progress.isDryRun ? "Cleanup validation progress" : "Cleanup processing progress")
         .accessibilityValue("\(Int(progress.fractionCompleted * 100)) percent")
     }
 }

@@ -41,6 +41,19 @@ final class StorageViewModel: ObservableObject {
         candidates.filter { selectedIDs.contains($0.id) && $0.isCleanable }
     }
     var selectedSize: Int64 { selectedCandidates.reduce(0) { $0 + $1.size } }
+    var selectedTrashSize: Int64 {
+        selectedCandidates.reduce(0) { total, candidate in
+            if case .trash = candidate.strategy { return total + candidate.size }
+            return total
+        }
+    }
+    var selectedImmediateDeletionSize: Int64 {
+        selectedCandidates.reduce(0) { total, candidate in
+            candidate.strategy == .deleteUnavailableSimulators ? total + candidate.size : total
+        }
+    }
+    var canModifySelection: Bool { !isScanning && !isUsingCachedScan && !isCleaning }
+    var canCleanSelection: Bool { canModifySelection && !selectedIDs.isEmpty }
     var cleanableSize: Int64 { candidates.filter(\.isCleanable).reduce(0) { $0 + $1.size } }
     var categoryTotals: [(StorageCategory, Int64)] {
         StorageCategory.allCases.compactMap { category in
@@ -85,16 +98,23 @@ final class StorageViewModel: ObservableObject {
     }
 
     func toggle(_ candidate: CleanupCandidate) {
-        guard candidate.isCleanable else { return }
+        guard candidate.isCleanable, canModifySelection else { return }
+        resetCleanupFeedback()
         if selectedIDs.contains(candidate.id) { selectedIDs.remove(candidate.id) }
         else { selectedIDs.insert(candidate.id) }
     }
 
     func selectSafeItems() {
+        guard canModifySelection else { return }
+        resetCleanupFeedback()
         selectedIDs = Set(candidates.filter { $0.isCleanable && $0.safety == .safe }.map(\.id))
     }
 
-    func clearSelection() { selectedIDs.removeAll() }
+    func clearSelection() {
+        guard canModifySelection else { return }
+        resetCleanupFeedback()
+        selectedIDs.removeAll()
+    }
 
     func reveal(_ candidate: CleanupCandidate) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: candidate.path)])
@@ -102,7 +122,7 @@ final class StorageViewModel: ObservableObject {
 
     func cleanSelected() async {
         let selection = selectedCandidates
-        guard !selection.isEmpty else { return }
+        guard !selection.isEmpty, canCleanSelection else { return }
         isCleaning = true
         let cleaner = cleaner
         let (progressStream, progressContinuation) = AsyncStream<CleanupProgress>.makeStream()
@@ -125,6 +145,11 @@ final class StorageViewModel: ObservableObject {
             await scan()
         }
         isCleaning = false
+    }
+
+    private func resetCleanupFeedback() {
+        cleanupProgress = nil
+        lastReport = nil
     }
 
 }

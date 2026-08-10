@@ -28,8 +28,41 @@ final class StorageCleanerTests: XCTestCase {
         XCTAssertEqual(report.previewedCount, 1)
         XCTAssertEqual(report.estimatedReclaimable, candidate.size)
         XCTAssertEqual(report.removedCount, 0)
+        XCTAssertEqual(report.estimatedTrashBytes, candidate.size)
+        XCTAssertEqual(report.estimatedImmediateDeletionBytes, 0)
         XCTAssertEqual(progressRecorder.values.last?.processedBytes, candidate.size)
+        XCTAssertEqual(progressRecorder.values.last?.eligibleBytes, candidate.size)
         XCTAssertEqual(progressRecorder.values.last?.fractionCompleted, 1)
+    }
+
+    func testDryRunSeparatesTrashAndImmediateDeletionBytes() {
+        let trashCandidate = makeCandidate(
+            url: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Caches/example", isDirectory: true)
+        )
+        let simulatorCandidate = CleanupCandidate(
+            id: "orphaned-simulators",
+            name: "Unavailable Simulator Devices",
+            detail: "Test",
+            path: "/virtual/simulators",
+            category: .simulators,
+            safety: .safe,
+            strategy: .deleteUnavailableSimulators,
+            size: 2_048,
+            modifiedAt: nil
+        )
+        let cleaner = StorageCleaner(
+            policy: AllowPolicy(),
+            configuration: DryRunConfiguration(),
+            processGuard: OpenProcessGuard(),
+            commands: NoopCommands()
+        )
+
+        let report = cleaner.clean([trashCandidate, simulatorCandidate]) { _ in }
+
+        XCTAssertEqual(report.estimatedReclaimable, 3_072)
+        XCTAssertEqual(report.estimatedTrashBytes, 1_024)
+        XCTAssertEqual(report.estimatedImmediateDeletionBytes, 2_048)
     }
 
     func testDeletionPolicyRejectsSensitiveUserDirectory() throws {
