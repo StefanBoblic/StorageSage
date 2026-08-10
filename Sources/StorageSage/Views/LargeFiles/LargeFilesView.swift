@@ -22,7 +22,7 @@ struct LargeFilesView: View {
                 EmptyStateView(
                     title: viewModel.scannedAt == nil ? "Find large files" : "No large files found",
                     message: "StorageSage analyzes your personal folders without changing any files.",
-                    icon: "doc.badge.magnifyingglass"
+                    icon: SidebarPage.largeFiles.icon
                 )
             } else {
                 List(viewModel.sortedFiles) { file in
