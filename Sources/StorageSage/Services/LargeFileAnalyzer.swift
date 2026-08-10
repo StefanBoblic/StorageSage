@@ -13,9 +13,14 @@ protocol LargeFileAnalyzing: Sendable {
 
 struct LargeFileAnalyzer: LargeFileAnalyzing {
     private let roots: [URL]
+    private let spotlight: any SpotlightFileQuerying
 
-    init(roots: [URL] = LargeFileAnalyzer.defaultRoots()) {
+    init(
+        roots: [URL] = LargeFileAnalyzer.defaultRoots(),
+        spotlight: any SpotlightFileQuerying = SpotlightFileQuery()
+    ) {
         self.roots = roots
+        self.spotlight = spotlight
     }
 
     func analyze(minimumSize: Int64) -> [LargeFileRecord] {
@@ -32,6 +37,12 @@ struct LargeFileAnalyzer: LargeFileAnalyzing {
         let fileManager = FileManager.default
 
         for root in roots where fileManager.fileExists(atPath: root.path) {
+            if let spotlightURLs = spotlight.files(in: root, minimumSize: minimumSize) {
+                records.append(contentsOf: spotlightURLs.compactMap {
+                    record(for: $0, minimumSize: minimumSize, keys: Set(keys))
+                })
+                continue
+            }
             guard let enumerator = fileManager.enumerator(
                 at: root,
                 includingPropertiesForKeys: keys,
@@ -40,23 +51,31 @@ struct LargeFileAnalyzer: LargeFileAnalyzing {
             ) else { continue }
 
             for case let url as URL in enumerator {
-                guard let values = try? url.resourceValues(forKeys: Set(keys)),
-                      values.isRegularFile == true,
-                      values.isSymbolicLink != true else { continue }
-                if values.isUbiquitousItem == true,
-                   values.ubiquitousItemDownloadingStatus != .current {
-                    continue
+                if let record = record(for: url, minimumSize: minimumSize, keys: Set(keys)) {
+                    records.append(record)
                 }
-                let size = Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
-                guard size >= minimumSize else { continue }
-                records.append(LargeFileRecord(
-                    url: url,
-                    size: size,
-                    modifiedAt: values.contentModificationDate
-                ))
             }
         }
-        return records.sorted { $0.size > $1.size }
+        return Dictionary(grouping: records, by: \.id)
+            .compactMap(\.value.first)
+            .sorted { $0.size > $1.size }
+    }
+
+    private func record(
+        for url: URL,
+        minimumSize: Int64,
+        keys: Set<URLResourceKey>
+    ) -> LargeFileRecord? {
+        guard let values = try? url.resourceValues(forKeys: keys),
+              values.isRegularFile == true,
+              values.isSymbolicLink != true else { return nil }
+        if values.isUbiquitousItem == true,
+           values.ubiquitousItemDownloadingStatus != .current {
+            return nil
+        }
+        let size = Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+        guard size >= minimumSize else { return nil }
+        return LargeFileRecord(url: url, size: size, modifiedAt: values.contentModificationDate)
     }
 
     static func defaultRoots(fileManager: FileManager = .default) -> [URL] {
