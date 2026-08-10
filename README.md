@@ -2,7 +2,7 @@
 
 StorageSage is a native SwiftUI storage analyzer and cleanup assistant for macOS. It helps you understand where disk space went, review safe cleanup candidates, and remove selected items without sending filesystem data anywhere.
 
-<img width="1539" height="1006" alt="StorageSage overview" src="https://github.com/user-attachments/assets/7fc47adf-396a-4d98-a193-8e236fc37e98" />
+<img width="1379" height="959" alt="image" src="https://github.com/user-attachments/assets/db6bbf54-403c-4d0a-ae60-78767cc4cfe1" />
 
 ## Requirements
 
