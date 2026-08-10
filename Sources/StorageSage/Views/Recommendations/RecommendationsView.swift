@@ -77,7 +77,7 @@ struct RecommendationsView: View {
                     .buttonStyle(.plain)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(candidate.name).font(.headline)
-                        Text(candidate.detail).font(.caption).foregroundStyle(.secondary)
+                        Text("\(candidate.category.rawValue) · \(candidate.detail)").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text(candidate.size.fileSize).font(.headline.monospacedDigit())

@@ -22,7 +22,7 @@ final class RecommendationsViewModel: ObservableObject {
     private let cleaner: any StorageCleaning
 
     init(
-        analyzers: [any RecommendationAnalyzing] = [InstallerArchiveAnalyzer()],
+        analyzers: [any RecommendationAnalyzing] = [InstallerArchiveAnalyzer(), ProjectArtifactAnalyzer()],
         preflight: any CleanupPreflightMeasuring = CleanupPreflightService(),
         cleaner: any StorageCleaning = StorageCleaner()
     ) {
@@ -85,7 +85,7 @@ final class RecommendationsViewModel: ObservableObject {
 
     func noteFileChanges(_ batch: FileChangeBatch) {
         guard !candidates.isEmpty else { return }
-        if batch.requiresFullRescan || batch.affects(InstallerArchiveAnalyzer.defaultRoots()) {
+        if batch.requiresFullRescan || batch.affects([FileManager.default.homeDirectoryForCurrentUser]) {
             isStale = true
         }
     }

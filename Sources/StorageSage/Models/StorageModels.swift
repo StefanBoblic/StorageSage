@@ -144,6 +144,7 @@ enum SafetyLevel: String, Codable, Sendable {
 enum CleanupStrategy: Hashable, Sendable {
     case trash(URL)
     case trashReviewedFile(URL)
+    case trashReviewedDirectory(URL)
     case deleteUnavailableSimulators
     case none
 }

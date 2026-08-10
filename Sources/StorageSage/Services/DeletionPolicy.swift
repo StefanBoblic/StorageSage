@@ -30,7 +30,7 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
 
         let url: URL
         switch candidate.strategy {
-        case .trash(let targetURL), .trashReviewedFile(let targetURL):
+        case .trash(let targetURL), .trashReviewedFile(let targetURL), .trashReviewedDirectory(let targetURL):
             url = targetURL
         case .deleteUnavailableSimulators:
             url = URL(fileURLWithPath: candidate.path, isDirectory: true)
@@ -65,12 +65,13 @@ struct DefaultDeletionPolicy: DeletionPolicyEvaluating {
             contains(literalURL, in: root) || contains(resolvedURL, in: root)
         }
         let isReviewedPersonalFile: Bool
-        if case .trashReviewedFile = candidate.strategy {
+        switch candidate.strategy {
+        case .trashReviewedFile, .trashReviewedDirectory:
             isReviewedPersonalFile = protected.personalReviewRoots.contains {
                 contains(literalURL, in: $0) && literalURL.path != $0.path
                     && contains(resolvedURL, in: $0) && resolvedURL.path != $0.path
             }
-        } else {
+        default:
             isReviewedPersonalFile = false
         }
         if matchesExactRoot || (matchesProtectedSubtree && !isReviewedPersonalFile) {

@@ -50,7 +50,7 @@ final class StorageViewModel: ObservableObject {
     var selectedTrashSize: Int64 {
         selectedCandidates.reduce(0) { total, candidate in
             switch candidate.strategy {
-            case .trash, .trashReviewedFile: return total + candidate.size
+            case .trash, .trashReviewedFile, .trashReviewedDirectory: return total + candidate.size
             default: return total
             }
         }
