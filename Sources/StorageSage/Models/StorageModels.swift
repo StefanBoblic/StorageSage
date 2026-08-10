@@ -93,6 +93,26 @@ struct CleanupCandidate: Identifiable, Hashable, Sendable {
     let modifiedAt: Date?
 
     var isCleanable: Bool { strategy != .none }
+
+    func replacing(size: Int64, modifiedAt: Date?) -> CleanupCandidate {
+        CleanupCandidate(
+            id: id,
+            name: name,
+            detail: detail,
+            path: path,
+            category: category,
+            safety: safety,
+            strategy: strategy,
+            size: size,
+            modifiedAt: modifiedAt
+        )
+    }
+}
+
+struct CleanupPreparation: Sendable {
+    let candidates: [CleanupCandidate]
+    let unavailableNames: [String]
+    let measuredAt: Date
 }
 
 struct VolumeSnapshot: Sendable {

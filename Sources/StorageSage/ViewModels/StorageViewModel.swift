@@ -17,24 +17,30 @@ final class StorageViewModel: ObservableObject {
     @Published private(set) var isScanning = false
     @Published private(set) var isUsingCachedScan = false
     @Published private(set) var isCleaning = false
+    @Published private(set) var isPreparingCleanup = false
     @Published private(set) var selectedIDs: Set<String> = []
     @Published private(set) var lastReport: CleanupReport?
     @Published private(set) var cleanupProgress: CleanupProgress?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var cleanupMeasuredAt: Date?
+    @Published private(set) var unavailableSelectionNames: [String] = []
 
     private let scanner: any StorageScanning
     private let cleaner: any StorageCleaning
     private let scanCache: any ScanResultCaching
+    private let preflight: any CleanupPreflightMeasuring
     private var hasScanned = false
 
     init(
         scanner: any StorageScanning = StorageScanner(),
         cleaner: any StorageCleaning = StorageCleaner(),
-        scanCache: any ScanResultCaching = DiskScanResultCache()
+        scanCache: any ScanResultCaching = DiskScanResultCache(),
+        preflight: any CleanupPreflightMeasuring = CleanupPreflightService()
     ) {
         self.scanner = scanner
         self.cleaner = cleaner
         self.scanCache = scanCache
+        self.preflight = preflight
     }
 
     var selectedCandidates: [CleanupCandidate] {
@@ -52,7 +58,7 @@ final class StorageViewModel: ObservableObject {
             candidate.strategy == .deleteUnavailableSimulators ? total + candidate.size : total
         }
     }
-    var canModifySelection: Bool { !isScanning && !isUsingCachedScan && !isCleaning }
+    var canModifySelection: Bool { !isScanning && !isUsingCachedScan && !isCleaning && !isPreparingCleanup }
     var canCleanSelection: Bool { canModifySelection && !selectedIDs.isEmpty }
     var cleanableSize: Int64 { candidates.filter(\.isCleanable).reduce(0) { $0 + $1.size } }
     var categoryTotals: [(StorageCategory, Int64)] {
@@ -120,6 +126,27 @@ final class StorageViewModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: candidate.path)])
     }
 
+    @discardableResult
+    func prepareSelectedCleanup() async -> Bool {
+        let selection = selectedCandidates
+        guard !selection.isEmpty, canCleanSelection else { return false }
+        isPreparingCleanup = true
+        cleanupMeasuredAt = nil
+        unavailableSelectionNames = []
+        let preflight = preflight
+        let preparation = await Task.detached(priority: .userInitiated) {
+            preflight.measure(selection)
+        }.value
+
+        let measuredByID = Dictionary(uniqueKeysWithValues: preparation.candidates.map { ($0.id, $0) })
+        candidates = candidates.map { measuredByID[$0.id] ?? $0 }
+        selectedIDs = Set(preparation.candidates.map(\.id))
+        unavailableSelectionNames = preparation.unavailableNames
+        cleanupMeasuredAt = preparation.measuredAt
+        isPreparingCleanup = false
+        return !selectedIDs.isEmpty
+    }
+
     func cleanSelected() async {
         let selection = selectedCandidates
         guard !selection.isEmpty, canCleanSelection else { return }
@@ -150,6 +177,8 @@ final class StorageViewModel: ObservableObject {
     private func resetCleanupFeedback() {
         cleanupProgress = nil
         lastReport = nil
+        cleanupMeasuredAt = nil
+        unavailableSelectionNames = []
     }
 
 }

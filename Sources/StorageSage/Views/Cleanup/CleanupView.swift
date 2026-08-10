@@ -118,7 +118,19 @@ struct CleanupView: View {
             if let progress = viewModel.cleanupProgress {
                 CleanupProgressSummary(progress: progress)
             }
-            Button(dryRun ? "Preview Selected" : "Remove Selected") { showingConfirmation = true }
+            Button {
+                Task {
+                    if await viewModel.prepareSelectedCleanup() {
+                        showingConfirmation = true
+                    }
+                }
+            } label: {
+                if viewModel.isPreparingCleanup {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(dryRun ? "Measure & Preview" : "Measure & Review")
+                }
+            }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(!viewModel.canCleanSelection)
@@ -130,7 +142,7 @@ struct CleanupView: View {
 
     private var confirmationMessage: String {
         if dryRun {
-            return "StorageSage will validate the current \(viewModel.selectedSize.fileSize) estimate. No files will be changed."
+            return "StorageSage measured the selected items again. The current total is \(viewModel.selectedSize.fileSize). No files will be changed.\(unavailableSelectionMessage)"
         }
         var lines: [String] = []
         if viewModel.selectedTrashSize > 0 {
@@ -140,7 +152,15 @@ struct CleanupView: View {
             lines.append("Delete approximately \(viewModel.selectedImmediateDeletionSize.fileSize) of unavailable Simulator data immediately. This cannot be undone.")
         }
         lines.append("Close affected apps before continuing.")
+        if !viewModel.unavailableSelectionNames.isEmpty {
+            lines.append("No longer available: \(viewModel.unavailableSelectionNames.joined(separator: ", ")).")
+        }
         return lines.joined(separator: "\n\n")
+    }
+
+    private var unavailableSelectionMessage: String {
+        guard !viewModel.unavailableSelectionNames.isEmpty else { return "" }
+        return " No longer available: \(viewModel.unavailableSelectionNames.joined(separator: ", "))."
     }
 
     private var selectionBreakdown: String {
