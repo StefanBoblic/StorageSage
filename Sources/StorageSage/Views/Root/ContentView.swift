@@ -52,17 +52,21 @@ struct ContentView: View {
                 }
             }
             .toolbar {
-                ToolbarItemGroup {
-                    if viewModel.isScanning {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+                ToolbarItem {
                     Button {
                         Task { await viewModel.scan() }
                     } label: {
-                        Label("Scan Now", systemImage: "arrow.clockwise")
+                        if viewModel.isScanning {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 16, height: 16)
+                                .accessibilityLabel("Scanning")
+                        } else {
+                            Label("Scan Now", systemImage: "arrow.clockwise")
+                        }
                     }
                     .disabled(viewModel.isScanning || viewModel.isCleaning)
+                    .help(viewModel.isScanning ? "Scanning…" : "Scan Now")
                 }
             }
         }
