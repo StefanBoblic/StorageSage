@@ -11,7 +11,21 @@ protocol StorageScanning: Sendable {
     func scan() async -> ScanResult
 }
 
-struct StorageScanner: StorageScanning {
+struct StorageScanProgress: Sendable {
+    let completedJobs: Int
+    let totalJobs: Int
+    let candidates: [CleanupCandidate]
+
+    var fraction: Double {
+        totalJobs > 0 ? min(Double(completedJobs) / Double(totalJobs), 1) : 0
+    }
+}
+
+protocol ProgressiveStorageScanning: StorageScanning {
+    func scan(progress: @escaping @Sendable (StorageScanProgress) -> Void) async -> ScanResult
+}
+
+struct StorageScanner: ProgressiveStorageScanning {
     private let targetProvider: any ScanTargetProviding
     private let analyzers: [any StorageAnalyzing]
     private let fileSystem: any FileSystemInspecting
@@ -33,7 +47,11 @@ struct StorageScanner: StorageScanning {
     }
 
     func scan() async -> ScanResult {
-        async let targetResult = scanTargets(targetProvider.targets())
+        await scan(progress: { _ in })
+    }
+
+    func scan(progress: @escaping @Sendable (StorageScanProgress) -> Void) async -> ScanResult {
+        async let targetResult = scanTargets(targetProvider.targets(), progress: progress)
         async let analyzerCandidates = runAnalyzers()
         let (scanned, analyzed) = await (targetResult, analyzerCandidates)
 
@@ -56,27 +74,37 @@ struct StorageScanner: StorageScanning {
         )
     }
 
-    private func scanTargets(_ targets: [ScanTarget]) async -> TargetScanResult {
+    private func scanTargets(
+        _ targets: [ScanTarget],
+        progress: @escaping @Sendable (StorageScanProgress) -> Void
+    ) async -> TargetScanResult {
         let prepared = prepareJobs(for: targets)
         let limit = max(configuration.maximumConcurrentTasks, 1)
         let batchSize = min(max((prepared.jobs.count + (limit * 2) - 1) / (limit * 2), 1), 32)
         let batches = stride(from: 0, to: prepared.jobs.count, by: batchSize).map {
             Array(prepared.jobs[$0..<min($0 + batchSize, prepared.jobs.count)])
         }
-        let scannedCandidates = await withTaskGroup(of: [CleanupCandidate].self, returning: [CleanupCandidate].self) { group in
+        let scannedCandidates = await withTaskGroup(of: (Int, [CleanupCandidate]).self, returning: [CleanupCandidate].self) { group in
             var iterator = batches.makeIterator()
             var results: [CleanupCandidate] = []
+            var completedJobs = 0
 
             for _ in 0..<min(limit, batches.count) {
                 if let batch = iterator.next() {
-                    group.addTask { candidates(for: batch) }
+                    group.addTask { (batch.count, candidates(for: batch)) }
                 }
             }
 
-            while let batchResults = await group.next() {
+            while let (batchCount, batchResults) = await group.next() {
                 results.append(contentsOf: batchResults)
+                completedJobs += batchCount
+                progress(StorageScanProgress(
+                    completedJobs: min(completedJobs, prepared.jobs.count),
+                    totalJobs: prepared.jobs.count,
+                    candidates: results.sorted { $0.size > $1.size }
+                ))
                 if let batch = iterator.next() {
-                    group.addTask { candidates(for: batch) }
+                    group.addTask { (batch.count, candidates(for: batch)) }
                 }
             }
             return results

@@ -68,7 +68,7 @@ struct ContentView: View {
         }
         .overlay {
             if viewModel.isScanning && viewModel.candidates.isEmpty {
-                ScanningOverlay()
+                ScanningOverlay(progress: viewModel.scanProgress)
             }
         }
         .onChange(of: fileChanges.revision) {
@@ -81,6 +81,8 @@ struct ContentView: View {
 }
 
 private struct ScanningOverlay: View {
+    let progress: StorageScanProgress?
+
     var body: some View {
         VStack(spacing: 18) {
             ProgressView()
@@ -88,13 +90,27 @@ private struct ScanningOverlay: View {
             VStack(spacing: 5) {
                 Text("Analyzing your Mac")
                     .font(.title3.weight(.semibold))
-                Text("Scanning caches, developer tools, simulators, and application data…")
+                Text(status)
+                    .foregroundStyle(.secondary)
+            }
+            if let progress {
+                ProgressView(value: progress.fraction)
+                    .frame(width: 260)
+                Text("\(Int(progress.fraction * 100))%")
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         }
         .padding(32)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(radius: 24, y: 8)
+    }
+
+    private var status: String {
+        guard let progress else {
+            return "Preparing caches, developer tools, simulators, and application data…"
+        }
+        return "Measured \(progress.completedJobs) of \(progress.totalJobs) locations"
     }
 }
 
