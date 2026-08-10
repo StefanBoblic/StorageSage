@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LargeFilesView: View {
     @EnvironmentObject private var viewModel: LargeFilesViewModel
+    @EnvironmentObject private var fileChanges: FSEventsMonitor
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +32,9 @@ struct LargeFilesView: View {
             }
         }
         .navigationTitle("Large Files")
+        .onChange(of: fileChanges.revision) {
+            viewModel.noteFileChanges(fileChanges.latestBatch)
+        }
     }
 
     private var header: some View {
@@ -41,6 +45,10 @@ struct LargeFilesView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if viewModel.isStale {
+                Label("Files changed", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption).foregroundStyle(.orange)
+            }
             Picker("Minimum Size", selection: $viewModel.minimumSize) {
                 Text("100 MB+").tag(Int64(100_000_000))
                 Text("500 MB+").tag(Int64(500_000_000))
