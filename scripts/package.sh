@@ -38,6 +38,9 @@ if [[ -z "$signing_identity" ]]; then
 fi
 
 xattr -cr "$app_dir"
+xattr -d com.apple.FinderInfo "$app_dir" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$app_dir" 2>/dev/null || true
+xattr -dr com.apple.provenance "$app_dir" 2>/dev/null || true
 codesign --force --deep --sign "$signing_identity" "$app_dir"
 
 echo "$app_dir"
