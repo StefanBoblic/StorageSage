@@ -40,6 +40,7 @@ struct ContentView: View {
                 case .overview: OverviewView(selection: $selection)
                 case .cleanup: CleanupView()
                 case .applications: ApplicationsView()
+                case .largeFiles: LargeFilesView()
                 }
             }
             .toolbar {

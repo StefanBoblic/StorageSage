@@ -12,6 +12,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case cleanup = "Cleanup"
     case applications = "Applications"
+    case largeFiles = "Large Files"
 
     var id: String { rawValue }
     var icon: String {
@@ -19,8 +20,18 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .overview: return "chart.pie.fill"
         case .cleanup: return "sparkles"
         case .applications: return "square.grid.2x2.fill"
+        case .largeFiles: return "doc.badge.magnifyingglass"
         }
     }
+}
+
+struct LargeFileRecord: Identifiable, Hashable, Sendable {
+    let url: URL
+    let size: Int64
+    let modifiedAt: Date?
+
+    var id: String { url.path }
+    var name: String { url.lastPathComponent }
 }
 
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
