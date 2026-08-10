@@ -191,6 +191,13 @@ struct CleanupView: View {
             if report.deletedImmediatelyCount > 0 {
                 lines.append("Deleted \(report.deletedImmediatelyCount) Simulator items totaling approximately \(report.deletedImmediatelyBytes.fileSize) immediately.")
             }
+            if let actualFreedBytes = report.actualFreedBytes {
+                if actualFreedBytes > 0 {
+                    lines.append("macOS reports \(actualFreedBytes.fileSize) more disk space available after cleanup.")
+                } else if report.removedCount > 0 {
+                    lines.append("No immediate increase in available disk space was reported. Items in Trash continue using space until Trash is emptied.")
+                }
+            }
         }
         if !report.skipped.isEmpty {
             lines.append("Skipped:\n" + report.skipped.joined(separator: "\n"))

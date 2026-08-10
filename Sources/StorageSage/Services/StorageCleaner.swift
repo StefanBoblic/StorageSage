@@ -19,17 +19,20 @@ struct StorageCleaner: StorageCleaning {
     private let configuration: any CleanupConfigurationProviding
     private let processGuard: any CleanupProcessGuarding
     private let commands: any CommandRunning
+    private let volumeSpace: any VolumeSpaceMeasuring
 
     init(
         policy: any DeletionPolicyEvaluating = DefaultDeletionPolicy(),
         configuration: any CleanupConfigurationProviding = UserDefaultsCleanupConfiguration(),
         processGuard: any CleanupProcessGuarding = CleanupProcessGuard(),
-        commands: any CommandRunning = CommandRunner()
+        commands: any CommandRunning = CommandRunner(),
+        volumeSpace: any VolumeSpaceMeasuring = VolumeSpaceMeter()
     ) {
         self.policy = policy
         self.configuration = configuration
         self.processGuard = processGuard
         self.commands = commands
+        self.volumeSpace = volumeSpace
     }
 
     func clean(
@@ -37,6 +40,9 @@ struct StorageCleaner: StorageCleaning {
         progress progressHandler: @escaping @Sendable (CleanupProgress) -> Void = { _ in }
     ) -> CleanupReport {
         var report = CleanupReport(isDryRun: configuration.isDryRunEnabled)
+        if !report.isDryRun {
+            report.availableBytesBefore = volumeSpace.availableBytes()
+        }
         var cleanupProgress = CleanupProgress(
             totalBytes: candidates.reduce(0) { $0 + $1.size },
             totalCount: candidates.count,
@@ -95,6 +101,9 @@ struct StorageCleaner: StorageCleaning {
             }
         }
 
+        if !report.isDryRun {
+            report.availableBytesAfter = volumeSpace.availableBytes()
+        }
         return report
     }
 

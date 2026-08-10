@@ -141,9 +141,15 @@ struct CleanupReport {
     var skipped: [String] = []
     var errors: [String] = []
     var isDryRun = false
+    var availableBytesBefore: Int64?
+    var availableBytesAfter: Int64?
 
     var removedCount: Int { movedToTrashCount + deletedImmediatelyCount }
     var handledBytes: Int64 { movedToTrashBytes + deletedImmediatelyBytes }
+    var actualFreedBytes: Int64? {
+        guard let availableBytesBefore, let availableBytesAfter else { return nil }
+        return max(availableBytesAfter - availableBytesBefore, 0)
+    }
 }
 
 struct CleanupProgress: Equatable, Sendable {

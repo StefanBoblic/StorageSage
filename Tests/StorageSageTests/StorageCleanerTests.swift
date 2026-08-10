@@ -92,6 +92,33 @@ final class StorageCleanerTests: XCTestCase {
         )
     }
 
+    func testCleanupReportsActualIncreaseInAvailableSpace() {
+        let candidate = CleanupCandidate(
+            id: "simulators",
+            name: "Unavailable Simulator Devices",
+            detail: "Test",
+            path: "/virtual/simulators",
+            category: .simulators,
+            safety: .safe,
+            strategy: .deleteUnavailableSimulators,
+            size: 3_000,
+            modifiedAt: nil
+        )
+        let cleaner = StorageCleaner(
+            policy: AllowPolicy(),
+            configuration: LiveConfiguration(),
+            processGuard: OpenProcessGuard(),
+            commands: SuccessfulCommands(),
+            volumeSpace: SequencedVolumeSpace(values: [10_000, 12_500])
+        )
+
+        let report = cleaner.clean([candidate]) { _ in }
+
+        XCTAssertEqual(report.availableBytesBefore, 10_000)
+        XCTAssertEqual(report.availableBytesAfter, 12_500)
+        XCTAssertEqual(report.actualFreedBytes, 2_500)
+    }
+
     private func makeCandidate(url: URL) -> CleanupCandidate {
         CleanupCandidate(
             id: url.path,
@@ -115,12 +142,38 @@ private struct DryRunConfiguration: CleanupConfigurationProviding {
     var isDryRunEnabled: Bool { true }
 }
 
+private struct LiveConfiguration: CleanupConfigurationProviding {
+    var isDryRunEnabled: Bool { false }
+}
+
 private struct OpenProcessGuard: CleanupProcessGuarding {
     func blockingReason(for candidate: CleanupCandidate) -> String? { nil }
 }
 
 private struct NoopCommands: CommandRunning {
     func run(_ executable: String, arguments: [String], timeout: TimeInterval) -> CommandResult? { nil }
+}
+
+private struct SuccessfulCommands: CommandRunning {
+    func run(_ executable: String, arguments: [String], timeout: TimeInterval) -> CommandResult? {
+        CommandResult(output: Data(), errorOutput: Data(), terminationStatus: 0)
+    }
+}
+
+private final class SequencedVolumeSpace: VolumeSpaceMeasuring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Int64]
+
+    init(values: [Int64]) {
+        self.values = values
+    }
+
+    func availableBytes() -> Int64? {
+        lock.withLock {
+            guard !values.isEmpty else { return nil }
+            return values.removeFirst()
+        }
+    }
 }
 
 private struct EmptyWhitelist: WhitelistProviding {
