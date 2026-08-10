@@ -26,6 +26,7 @@ cp "$scratch_dir/release/StorageSage" "$app_dir/Contents/MacOS/StorageSage"
 cp "$project_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$project_dir/Resources/StorageSage.icns" "$app_dir/Contents/Resources/StorageSage.icns"
 chmod +x "$app_dir/Contents/MacOS/StorageSage"
+xattr -cr "$app_dir"
 codesign --force --deep --sign - "$app_dir"
 
 echo "$app_dir"

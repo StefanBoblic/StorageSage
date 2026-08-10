@@ -85,9 +85,7 @@ struct RecommendationsView: View {
                             if viewModel.isScanning { ProgressView().controlSize(.small) }
                             Image(systemName: viewModel.isUsingCachedResults ? "clock.arrow.circlepath" : "bolt.fill")
                                 .foregroundStyle(.secondary)
-                            Text(viewModel.isUsingCachedResults
-                                 ? "Showing cached results while fresh analysis runs."
-                                 : "Completed sections appear immediately while the remaining analysis continues.")
+                            Text(cacheStatus)
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                     }
@@ -122,6 +120,16 @@ struct RecommendationsView: View {
             }
             .listStyle(.inset)
         }
+    }
+
+    private var cacheStatus: String {
+        if viewModel.isUsingCachedResults && viewModel.isScanning {
+            return "Showing cached results while fresh analysis runs."
+        }
+        if viewModel.isUsingCachedResults {
+            return "Showing cached results. Run Analyze to refresh them."
+        }
+        return "Completed sections appear immediately while the remaining analysis continues."
     }
 
     private var selectionBar: some View {

@@ -53,6 +53,14 @@ StorageSage is a native SwiftUI storage analyzer and cleanup assistant for macOS
 - Keeps a local cleanup history with paths, actions, estimates, and measured free-space changes.
 - Lets you clear the local history at any time.
 
+### Disk Growth Monitor
+
+- Records private, local snapshots of allocated storage by non-overlapping folder buckets.
+- Compares the last snapshot, baseline, 24-hour, 7-day, 30-day, or complete history ranges.
+- Charts used disk space and separates tracked growth from System, APFS, purgeable, and inaccessible changes.
+- Uses coalesced FSEvents to remeasure only affected buckets, with a 15-minute automatic refresh limit.
+- Downsamples older history and never stores file contents or a complete file listing.
+
 ## Safety and privacy
 
 - Nothing is removed automatically.
@@ -87,7 +95,9 @@ Views/        SwiftUI screens and reusable components
 
 `StorageScanner` is path-agnostic. Scan locations come from `ScanTargetProviding`; system folders are resolved through `FileManager` search-path APIs; developer locations are described by a rule catalog. Xcode's custom Derived Data preference and `GRADLE_USER_HOME` are resolved dynamically.
 
-Independent filesystem jobs use bounded Swift task groups. Large Files uses Spotlight as a fast path, directory sizing can use `du`, and both have safe filesystem fallbacks. Specialized analyzers and cleanup services are injected behind protocols, while SwiftUI views remain free of filesystem side effects.
+Independent filesystem jobs use bounded Swift task groups. Large Files and Duplicates share an FSEvents-invalidated metadata index, directory measurements are batched, and Overview streams partial results while a scan is running. Spotlight and `du` provide fast paths with safe filesystem fallbacks. Specialized analyzers and cleanup services are injected behind protocols, while SwiftUI views remain free of filesystem side effects.
+
+Smart Recommendations uses a Spotlight-first installer query, filters generated dependency trees, caches its latest result, and publishes each analyzer section as soon as it finishes. Cleanup screens update optimistically and perform verification refreshes without blocking the completed action.
 
 ## Build and test
 

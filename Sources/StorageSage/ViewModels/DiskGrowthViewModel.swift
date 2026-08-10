@@ -49,12 +49,8 @@ final class DiskGrowthViewModel: ObservableObject {
         guard !hasLoaded else { return }
         history = await store.load()
         hasLoaded = true
-        guard automaticTrackingEnabled else { return }
-        if let latestSnapshot {
-            if Date().timeIntervalSince(latestSnapshot.createdAt) >= 6 * 60 * 60 {
-                await refresh(trigger: .applicationLaunch, affectedPaths: nil, automatic: true)
-            }
-        }
+        // The Overview scan calls noteOverviewScan when it finishes. Deferring the
+        // launch snapshot avoids two expensive disk walks competing at startup.
     }
 
     func establishBaseline() async {
