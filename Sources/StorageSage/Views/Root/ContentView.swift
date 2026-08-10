@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var viewModel: StorageViewModel
+    @EnvironmentObject private var fileChanges: FSEventsMonitor
+    @EnvironmentObject private var diskGrowth: DiskGrowthViewModel
     @State private var selection: SidebarPage? = .overview
 
     var body: some View {
@@ -44,34 +46,48 @@ struct ContentView: View {
                 case .leftovers: AppLeftoversView()
                 case .duplicates: DuplicatesView()
                 case .recommendations: RecommendationsView()
+                case .growth: DiskGrowthView()
                 case .snapshots: APFSSnapshotsView()
                 case .history: CleanupHistoryView()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .toolbar {
-                ToolbarItemGroup {
-                    if viewModel.isScanning {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+                ToolbarItem {
                     Button {
                         Task { await viewModel.scan() }
                     } label: {
-                        Label("Scan Now", systemImage: "arrow.clockwise")
+                        if viewModel.isScanning {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 16, height: 16)
+                                .accessibilityLabel("Scanning")
+                        } else {
+                            Label("Scan Now", systemImage: "arrow.clockwise")
+                        }
                     }
                     .disabled(viewModel.isScanning || viewModel.isCleaning)
+                    .help(viewModel.isScanning ? "Scanning…" : "Scan Now")
                 }
             }
         }
         .overlay {
             if viewModel.isScanning && viewModel.candidates.isEmpty {
-                ScanningOverlay()
+                ScanningOverlay(progress: viewModel.scanProgress)
             }
+        }
+        .onChange(of: fileChanges.revision) {
+            diskGrowth.noteFileChanges(fileChanges.latestBatch)
+        }
+        .onChange(of: viewModel.scannedAt) {
+            diskGrowth.noteOverviewScan()
         }
     }
 }
 
 private struct ScanningOverlay: View {
+    let progress: StorageScanProgress?
+
     var body: some View {
         VStack(spacing: 18) {
             ProgressView()
@@ -79,13 +95,27 @@ private struct ScanningOverlay: View {
             VStack(spacing: 5) {
                 Text("Analyzing your Mac")
                     .font(.title3.weight(.semibold))
-                Text("Scanning caches, developer tools, simulators, and application data…")
+                Text(status)
+                    .foregroundStyle(.secondary)
+            }
+            if let progress {
+                ProgressView(value: progress.fraction)
+                    .frame(width: 260)
+                Text("\(Int(progress.fraction * 100))%")
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         }
         .padding(32)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(radius: 24, y: 8)
+    }
+
+    private var status: String {
+        guard let progress else {
+            return "Preparing caches, developer tools, simulators, and application data…"
+        }
+        return "Measured \(progress.completedJobs) of \(progress.totalJobs) locations"
     }
 }
 

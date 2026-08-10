@@ -10,7 +10,7 @@ import XCTest
 @testable import StorageSage
 
 final class LargeFileAnalyzerTests: XCTestCase {
-    func testFindsOnlyFilesAboveThreshold() throws {
+    func testFindsOnlyFilesAboveThreshold() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -18,7 +18,7 @@ final class LargeFileAnalyzerTests: XCTestCase {
         try Data(repeating: 1, count: 1_000_000).write(to: root.appendingPathComponent("large.bin"))
         try Data(repeating: 1, count: 1).write(to: root.appendingPathComponent("small.bin"))
 
-        let results = LargeFileAnalyzer(
+        let results = await LargeFileAnalyzer(
             roots: [root],
             spotlight: UnavailableSpotlight()
         ).analyze(minimumSize: 500_000)
@@ -27,7 +27,7 @@ final class LargeFileAnalyzerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(results[0].size, 500_000)
     }
 
-    func testUsesSpotlightResultsWhenAvailable() throws {
+    func testUsesSpotlightResultsWhenAvailable() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -35,7 +35,7 @@ final class LargeFileAnalyzerTests: XCTestCase {
         let file = root.appendingPathComponent("indexed.bin")
         try Data(repeating: 2, count: 100_000).write(to: file)
 
-        let results = LargeFileAnalyzer(
+        let results = await LargeFileAnalyzer(
             roots: [root],
             spotlight: FixedSpotlight(files: [file])
         ).analyze(minimumSize: 50_000)
@@ -43,14 +43,14 @@ final class LargeFileAnalyzerTests: XCTestCase {
         XCTAssertEqual(results.map(\.name), ["indexed.bin"])
     }
 
-    func testSkipsExcludedSubtrees() throws {
+    func testSkipsExcludedSubtrees() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let excluded = root.appendingPathComponent("Private", isDirectory: true)
         try FileManager.default.createDirectory(at: excluded, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try Data(repeating: 1, count: 100_000).write(to: excluded.appendingPathComponent("large.bin"))
 
-        let results = LargeFileAnalyzer(
+        let results = await LargeFileAnalyzer(
             roots: [root],
             spotlight: UnavailableSpotlight(),
             exclusions: FixedExclusions(urls: [excluded])

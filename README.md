@@ -39,6 +39,7 @@ StorageSage is a native SwiftUI storage analyzer and cleanup assistant for macOS
 
 - Finds support files that may remain after an app is uninstalled.
 - Matches installed applications by bundle identifier and ignores Apple-owned identifiers.
+- Supports selecting or deselecting every detected leftover in one action.
 - Keeps every result review-only until you explicitly select it for Trash.
 
 ### Smart Recommendations
@@ -46,12 +47,22 @@ StorageSage is a native SwiftUI storage analyzer and cleanup assistant for macOS
 - Finds stale installers and archives such as DMG, PKG, XIP, ZIP, IPSW, and ISO files.
 - Detects rebuildable project artifacts from project markers instead of fixed project paths.
 - Supports Swift, Node.js, CocoaPods, Gradle, and Python build artifacts and environments.
+- Loads cached results immediately, analyzes sections in parallel, and publishes each section as it completes.
+- Hides the completed Installers & Archives section when no matching files were found.
 
 ### APFS snapshots and history
 
 - Inspects APFS snapshot metadata through `diskutil` without modifying snapshots.
 - Keeps a local cleanup history with paths, actions, estimates, and measured free-space changes.
 - Lets you clear the local history at any time.
+
+### Disk Growth Monitor
+
+- Records private, local snapshots of allocated storage by non-overlapping folder buckets.
+- Compares the last snapshot, baseline, 24-hour, 7-day, 30-day, or complete history ranges.
+- Charts used disk space and separates tracked growth from System, APFS, purgeable, and inaccessible changes.
+- Uses coalesced FSEvents to remeasure only affected buckets, with a 15-minute automatic refresh limit.
+- Downsamples older history and never stores file contents or a complete file listing.
 
 ## Safety and privacy
 
@@ -71,7 +82,7 @@ brew install --cask stefanboblic/tap/storagesage
 
 You can also download the latest ZIP from [GitHub Releases](https://github.com/StefanBoblic/StorageSage/releases/latest), extract it, and move `StorageSage.app` to Applications.
 
-The downloadable app is currently ad-hoc signed rather than notarized with an Apple Developer ID certificate. On first launch, macOS may require you to right-click the app and choose **Open**, or approve it in **System Settings → Privacy & Security**.
+The current downloadable release is ad-hoc signed and is not notarized. On first launch, macOS may require you to right-click the app and choose **Open**, or approve it in **System Settings → Privacy & Security**. See [Code signing](#code-signing) for development and release signing behavior.
 
 ## Architecture
 
@@ -87,7 +98,9 @@ Views/        SwiftUI screens and reusable components
 
 `StorageScanner` is path-agnostic. Scan locations come from `ScanTargetProviding`; system folders are resolved through `FileManager` search-path APIs; developer locations are described by a rule catalog. Xcode's custom Derived Data preference and `GRADLE_USER_HOME` are resolved dynamically.
 
-Independent filesystem jobs use bounded Swift task groups. Large Files uses Spotlight as a fast path, directory sizing can use `du`, and both have safe filesystem fallbacks. Specialized analyzers and cleanup services are injected behind protocols, while SwiftUI views remain free of filesystem side effects.
+Independent filesystem jobs use bounded Swift task groups. Large Files and Duplicates share an FSEvents-invalidated metadata index, directory measurements are batched, and Overview streams partial results while a scan is running. Spotlight and `du` provide fast paths with safe filesystem fallbacks. Specialized analyzers and cleanup services are injected behind protocols, while SwiftUI views remain free of filesystem side effects.
+
+Smart Recommendations uses a Spotlight-first installer query, filters generated dependency trees, caches its latest result, and publishes each analyzer section as soon as it finishes. Cleanup screens update optimistically and perform verification refreshes without blocking the completed action.
 
 ## Build and test
 
@@ -99,6 +112,31 @@ zsh scripts/package.sh
 
 The packaged app is written to `dist/StorageSage.app` by default.
 
+### Code signing
+
+`scripts/package.sh` keeps the bundle identifier stable at `com.stefanboblic.StorageSage` and selects a signing identity in this order:
+
+1. The identity supplied through `CODESIGN_IDENTITY`.
+2. An installed `Apple Development` or `Developer ID Application` identity from the login Keychain.
+3. An ad-hoc signature when no Apple identity is available, such as on an unconfigured CI runner.
+
+Local builds signed with the same Apple Development certificate keep a stable designated requirement, which allows macOS to associate Files and Folders permissions with subsequent builds. An Apple Development signature is intended only for development; public distribution requires a `Developer ID Application` certificate and notarization.
+
+To choose a release identity explicitly:
+
+```sh
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" zsh scripts/package.sh
+```
+
+Verify the resulting bundle and inspect its authority:
+
+```sh
+codesign --verify --deep --strict dist/StorageSage.app
+codesign -dvvv dist/StorageSage.app
+```
+
+The packaging script signs the app but does not currently submit it to Apple's notary service. A public release must be notarized and stapled separately before publishing if a Developer ID identity is used.
+
 Run the test suite:
 
 ```sh
@@ -108,5 +146,5 @@ swift test
 The real-filesystem performance benchmark is opt-in:
 
 ```sh
-STORAGESAGE_RUN_BENCHMARKS=1 swift test --filter InitialScanPerformanceTests
+STORAGESAGE_BENCHMARK=1 swift test --filter StoragePerformanceTests
 ```

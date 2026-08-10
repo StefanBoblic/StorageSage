@@ -12,11 +12,29 @@ protocol ScanExclusionProviding: Sendable {
 }
 
 extension ScanExclusionProviding {
+    func matcher() -> PathExclusionMatcher {
+        PathExclusionMatcher(urls: excludedURLs())
+    }
+
     func excludes(_ url: URL) -> Bool {
-        let candidatePath = url.standardizedFileURL.path
-        return excludedURLs().contains { excluded in
-            let excludedPath = excluded.standardizedFileURL.path
-            return candidatePath == excludedPath || candidatePath.hasPrefix(excludedPath + "/")
+        matcher().excludes(url)
+    }
+}
+
+struct PathExclusionMatcher: Sendable {
+    private let excludedPaths: [String]
+
+    init(urls: [URL]) {
+        excludedPaths = Array(Set(urls.map { $0.standardizedFileURL.path })).sorted()
+    }
+
+    func excludes(_ url: URL) -> Bool {
+        excludes(path: url.standardizedFileURL.path)
+    }
+
+    func excludes(path candidatePath: String) -> Bool {
+        excludedPaths.contains { excludedPath in
+            candidatePath == excludedPath || candidatePath.hasPrefix(excludedPath + "/")
         }
     }
 }

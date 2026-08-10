@@ -17,6 +17,7 @@ struct StorageSageApp: App {
     @StateObject private var recommendationsViewModel = RecommendationsViewModel()
     @StateObject private var snapshotsViewModel = APFSSnapshotsViewModel()
     @StateObject private var cleanupHistory = CleanupHistoryViewModel()
+    @StateObject private var diskGrowth = DiskGrowthViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -29,9 +30,11 @@ struct StorageSageApp: App {
                 .environmentObject(recommendationsViewModel)
                 .environmentObject(snapshotsViewModel)
                 .environmentObject(cleanupHistory)
+                .environmentObject(diskGrowth)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
                 .task { fileChanges.start() }
+                .task { await diskGrowth.load() }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -46,6 +49,7 @@ struct StorageSageApp: App {
         Settings {
             SettingsView()
                 .environmentObject(viewModel)
+                .environmentObject(diskGrowth)
                 .frame(width: 560, height: 540)
         }
     }

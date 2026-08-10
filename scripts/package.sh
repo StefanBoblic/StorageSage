@@ -6,6 +6,7 @@ output_dir=${1:-"$project_dir/dist"}
 app_dir="$output_dir/StorageSage.app"
 scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/storagesage-package-build.XXXXXX")
 module_cache="$scratch_dir/module-cache"
+signing_identity=${CODESIGN_IDENTITY:-}
 
 cleanup_scratch_dir() {
     [[ -n "$scratch_dir" && -d "$scratch_dir" ]] && rm -rf "$scratch_dir"
@@ -26,6 +27,20 @@ cp "$scratch_dir/release/StorageSage" "$app_dir/Contents/MacOS/StorageSage"
 cp "$project_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$project_dir/Resources/StorageSage.icns" "$app_dir/Contents/Resources/StorageSage.icns"
 chmod +x "$app_dir/Contents/MacOS/StorageSage"
-codesign --force --deep --sign - "$app_dir"
+
+if [[ -z "$signing_identity" ]]; then
+    signing_identity=$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk '/"Apple Development:|"Developer ID Application:/{ print $2; exit }')
+fi
+if [[ -z "$signing_identity" ]]; then
+    signing_identity="-"
+    echo "warning: no Apple code-signing identity found; using an ad-hoc signature" >&2
+fi
+
+xattr -cr "$app_dir"
+xattr -d com.apple.FinderInfo "$app_dir" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$app_dir" 2>/dev/null || true
+xattr -dr com.apple.provenance "$app_dir" 2>/dev/null || true
+codesign --force --deep --sign "$signing_identity" "$app_dir"
 
 echo "$app_dir"

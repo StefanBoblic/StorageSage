@@ -23,6 +23,7 @@ final class StorageViewModelTests: XCTestCase {
         await viewModel.scan()
         viewModel.toggle(candidate)
         await viewModel.cleanSelected()
+        await viewModel.waitForBackgroundRefresh()
 
         XCTAssertEqual(scanner.callCount, 2)
         XCTAssertTrue(viewModel.candidates.isEmpty)

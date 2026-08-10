@@ -10,6 +10,7 @@ import SwiftUI
 struct AppLeftoversView: View {
     @EnvironmentObject private var viewModel: AppLeftoversViewModel
     @EnvironmentObject private var history: CleanupHistoryViewModel
+    @EnvironmentObject private var fileChanges: FSEventsMonitor
     @AppStorage(StoragePreferenceKeys.dryRun) private var dryRun = false
     @State private var showingConfirmation = false
     @State private var showingReport = false
@@ -22,6 +23,9 @@ struct AppLeftoversView: View {
             if !viewModel.selectedIDs.isEmpty { selectionBar }
         }
         .navigationTitle("App Leftovers")
+        .onChange(of: fileChanges.revision) {
+            viewModel.noteFileChanges(fileChanges.latestBatch)
+        }
         .confirmationDialog("Review app leftovers?", isPresented: $showingConfirmation, titleVisibility: .visible) {
             Button(dryRun ? "Preview Only" : "Move to Trash", role: dryRun ? nil : .destructive) {
                 Task {
@@ -58,6 +62,12 @@ struct AppLeftoversView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if !viewModel.records.isEmpty {
+                Button(viewModel.areAllRecordsSelected ? "Deselect All" : "Select All") {
+                    viewModel.toggleAll()
+                }
+                .disabled(!viewModel.canModifySelection)
+            }
             Button("Analyze Leftovers") { Task { await viewModel.scan() } }
                 .buttonStyle(.borderedProminent)
                 .disabled(viewModel.isScanning || viewModel.isCleaning)

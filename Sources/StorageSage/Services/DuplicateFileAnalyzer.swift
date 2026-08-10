@@ -14,28 +14,41 @@ protocol DuplicateFileAnalyzing: Sendable {
         groups: [DuplicateGroup],
         selectedPaths: Set<String>
     ) async -> [CleanupCandidate]
+    func invalidate(_ batch: FileChangeBatch) async
 }
 
 struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
-    private let roots: [URL]
+    private let index: any FileMetadataIndexing
     private let maximumConcurrentHashes: Int
     private let fileSystem: any FileSystemInspecting
     private let exclusions: any ScanExclusionProviding
 
     init(
-        roots: [URL] = LargeFileAnalyzer.defaultRoots(),
+        index: any FileMetadataIndexing = PersonalFileMetadataIndex.shared,
         maximumConcurrentHashes: Int = 4,
         fileSystem: any FileSystemInspecting = FileSystemInspector(),
         exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
-        self.roots = roots
+        self.index = index
+        self.maximumConcurrentHashes = max(maximumConcurrentHashes, 1)
+        self.fileSystem = fileSystem
+        self.exclusions = exclusions
+    }
+
+    init(
+        roots: [URL],
+        maximumConcurrentHashes: Int = 4,
+        fileSystem: any FileSystemInspecting = FileSystemInspector(),
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
+    ) {
+        index = PersonalFileMetadataIndex(roots: roots, spotlight: DisabledSpotlightFileQuery(), exclusions: exclusions)
         self.maximumConcurrentHashes = max(maximumConcurrentHashes, 1)
         self.fileSystem = fileSystem
         self.exclusions = exclusions
     }
 
     func analyze(minimumSize: Int64) async -> [DuplicateGroup] {
-        let probes = discoverFiles(minimumSize: minimumSize)
+        let probes = await discoverFiles(minimumSize: minimumSize)
         let sameSize = Dictionary(grouping: probes, by: \.size).values.filter { $0.count > 1 }
         let partialCandidates = sameSize.flatMap { $0 }
         let partialHashes = await hashes(for: partialCandidates, mode: .partial)
@@ -65,7 +78,7 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
         selectedPaths: Set<String>
     ) async -> [CleanupCandidate] {
         var candidates: [CleanupCandidate] = []
-        for group in groups {
+        for group in groups where group.files.contains(where: { selectedPaths.contains($0.id) }) {
             let existing = group.files.filter { fileSystem.exists($0.url) }
             let probes = existing.map {
                 FileProbe(url: $0.url, size: $0.size, modifiedAt: $0.modifiedAt, resourceIdentifier: $0.url.path)
@@ -94,49 +107,19 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
         return candidates
     }
 
-    private func discoverFiles(minimumSize: Int64) -> [FileProbe] {
-        let keys: Set<URLResourceKey> = [
-            .isRegularFileKey,
-            .isSymbolicLinkKey,
-            .fileSizeKey,
-            .contentModificationDateKey,
-            .fileResourceIdentifierKey,
-            .isUbiquitousItemKey,
-            .ubiquitousItemDownloadingStatusKey
-        ]
-        var probesByPath: [String: FileProbe] = [:]
-        let fileManager = FileManager.default
+    func invalidate(_ batch: FileChangeBatch) async {
+        await index.invalidate(batch)
+    }
 
-        for root in roots where fileManager.fileExists(atPath: root.path) && !exclusions.excludes(root) {
-            guard let enumerator = fileManager.enumerator(
-                at: root,
-                includingPropertiesForKeys: Array(keys),
-                options: [.skipsHiddenFiles, .skipsPackageDescendants],
-                errorHandler: { _, _ in true }
-            ) else { continue }
-            for case let url as URL in enumerator {
-                if exclusions.excludes(url) {
-                    enumerator.skipDescendants()
-                    continue
-                }
-                guard let values = try? url.resourceValues(forKeys: keys),
-                      values.isRegularFile == true,
-                      values.isSymbolicLink != true else { continue }
-                if values.isUbiquitousItem == true,
-                   values.ubiquitousItemDownloadingStatus != .current {
-                    continue
-                }
-                let size = Int64(values.fileSize ?? 0)
-                guard size >= minimumSize else { continue }
-                probesByPath[url.path] = FileProbe(
-                    url: url,
-                    size: size,
-                    modifiedAt: values.contentModificationDate,
-                    resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) } ?? url.path
-                )
-            }
+    private func discoverFiles(minimumSize: Int64) async -> [FileProbe] {
+        await index.files(minimumSize: minimumSize).map {
+            FileProbe(
+                url: $0.url,
+                size: $0.logicalSize,
+                modifiedAt: $0.modifiedAt,
+                resourceIdentifier: $0.resourceIdentifier
+            )
         }
-        return Array(probesByPath.values)
     }
 
     private func hashes(for probes: [FileProbe], mode: HashMode) async -> [URL: String] {
@@ -190,6 +173,10 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
             return nil
         }
     }
+}
+
+private struct DisabledSpotlightFileQuery: SpotlightFileQuerying {
+    func files(in root: URL, minimumSize: Int64) -> [URL]? { nil }
 }
 
 private struct FileProbe: Sendable {

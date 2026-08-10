@@ -14,6 +14,8 @@ struct SettingsView: View {
     private var maximumConcurrentScans = UserDefaultsScanConfiguration.recommendedConcurrency
     @State private var whitelistPaths: [String] = []
     @State private var exclusionPaths: [String] = []
+    @AppStorage(StoragePreferenceKeys.automaticGrowthTracking)
+    private var automaticGrowthTracking = true
 
     private let whitelistStore = UserDefaultsWhitelistStore()
     private let exclusionStore = UserDefaultsScanExclusionStore()
@@ -91,6 +93,13 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
+
+            Section("Growth Monitor") {
+                Toggle("Automatic Growth Snapshots", isOn: $automaticGrowthTracking)
+                Text("When StorageSage is open, changed tracked folders are remeasured at most once every 15 minutes. No background agent is installed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Privacy") {

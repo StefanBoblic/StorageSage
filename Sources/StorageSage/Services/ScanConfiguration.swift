@@ -12,6 +12,7 @@ enum StoragePreferenceKeys {
     static let whitelist = "cleanup.whitelist"
     static let maximumConcurrentScans = "scanner.maximumConcurrentTasks"
     static let scanExclusions = "scanner.excludedLocations"
+    static let automaticGrowthTracking = "growth.automaticTracking"
 }
 
 protocol ScanConfigurationProviding: Sendable {

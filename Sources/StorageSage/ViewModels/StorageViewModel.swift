@@ -24,12 +24,14 @@ final class StorageViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var cleanupMeasuredAt: Date?
     @Published private(set) var unavailableSelectionNames: [String] = []
+    @Published private(set) var scanProgress: StorageScanProgress?
 
     private let scanner: any StorageScanning
     private let cleaner: any StorageCleaning
     private let scanCache: any ScanResultCaching
     private let preflight: any CleanupPreflightMeasuring
     private var hasScanned = false
+    private var backgroundRefreshTask: Task<Void, Never>?
 
     init(
         scanner: any StorageScanning = StorageScanner(),
@@ -86,15 +88,37 @@ final class StorageViewModel: ObservableObject {
     func scan() async {
         guard !isScanning else { return }
         isScanning = true
+        scanProgress = nil
         errorMessage = nil
         let scanner = scanner
-        let result = await Task.detached(priority: .userInitiated) { await scanner.scan() }.value
+        let showsPartialResults = candidates.isEmpty
+        let result: ScanResult
+        if let progressive = scanner as? any ProgressiveStorageScanning {
+            let (stream, continuation) = AsyncStream<StorageScanProgress>.makeStream()
+            let progressTask = Task { [weak self] in
+                for await update in stream {
+                    guard let self else { continue }
+                    scanProgress = update
+                    if showsPartialResults {
+                        candidates = update.candidates
+                    }
+                }
+            }
+            result = await Task.detached(priority: .userInitiated) {
+                await progressive.scan { continuation.yield($0) }
+            }.value
+            continuation.finish()
+            await progressTask.value
+        } else {
+            result = await Task.detached(priority: .userInitiated) { await scanner.scan() }.value
+        }
         apply(result)
         isUsingCachedScan = false
         let scanCache = scanCache
         await Task.detached(priority: .utility) { scanCache.save(result) }.value
         hasScanned = true
         isScanning = false
+        scanProgress = nil
     }
 
     private func apply(_ result: ScanResult) {
@@ -169,11 +193,23 @@ final class StorageViewModel: ObservableObject {
         await progressTask.value
 
         lastReport = report
+        let cleanedIDs = Set(selection.map(\.id))
         selectedIDs.removeAll()
         if report.removedCount > 0 {
-            await scan()
+            candidates.removeAll { cleanedIDs.contains($0.id) }
+            if let available = report.availableBytesAfter {
+                volume.available = available
+            }
         }
         isCleaning = false
+        if report.removedCount > 0 {
+            backgroundRefreshTask?.cancel()
+            backgroundRefreshTask = Task { [weak self] in await self?.scan() }
+        }
+    }
+
+    func waitForBackgroundRefresh() async {
+        await backgroundRefreshTask?.value
     }
 
     private func resetCleanupFeedback() {

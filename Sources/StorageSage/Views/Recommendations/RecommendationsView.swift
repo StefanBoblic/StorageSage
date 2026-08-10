@@ -23,6 +23,7 @@ struct RecommendationsView: View {
             if !viewModel.selectedIDs.isEmpty { selectionBar }
         }
         .navigationTitle("Recommendations")
+        .task { await viewModel.loadCachedResults() }
         .onChange(of: fileChanges.revision) { viewModel.noteFileChanges(fileChanges.latestBatch) }
         .confirmationDialog("Review selected files?", isPresented: $showingConfirmation, titleVisibility: .visible) {
             Button(dryRun ? "Preview Only" : "Move to Trash", role: dryRun ? nil : .destructive) {
@@ -72,28 +73,63 @@ struct RecommendationsView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if viewModel.isScanning {
+        if viewModel.isScanning && viewModel.candidates.isEmpty {
             ProgressView("Finding safe opportunities…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.candidates.isEmpty {
             EmptyStateView(title: "No recommendations yet", message: "Run the analyzer to find old installers and archives.", icon: "lightbulb")
         } else {
-            List(viewModel.candidates) { candidate in
-                HStack(spacing: 12) {
-                    Button { viewModel.toggle(candidate) } label: {
-                        Image(systemName: viewModel.selectedIDs.contains(candidate.id) ? "checkmark.circle.fill" : "circle")
+            List {
+                if viewModel.isUsingCachedResults || viewModel.isScanning {
+                    Section {
+                        HStack(spacing: 10) {
+                            if viewModel.isScanning { ProgressView().controlSize(.small) }
+                            Image(systemName: viewModel.isUsingCachedResults ? "clock.arrow.circlepath" : "bolt.fill")
+                                .foregroundStyle(.secondary)
+                            Text(cacheStatus)
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(candidate.name).font(.headline)
-                        Text("\(candidate.category.rawValue) · \(candidate.detail)").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(candidate.size.fileSize).font(.headline.monospacedDigit())
                 }
-                .padding(.vertical, 5)
+                ForEach(viewModel.sections.filter(\.shouldDisplay)) { section in
+                    Section {
+                        if section.candidates.isEmpty && section.isScanning {
+                            ProgressView("Scanning \(section.title)…").padding(.vertical, 8)
+                        }
+                        ForEach(section.candidates) { candidate in
+                            HStack(spacing: 12) {
+                                Button { viewModel.toggle(candidate) } label: {
+                                    Image(systemName: viewModel.selectedIDs.contains(candidate.id) ? "checkmark.circle.fill" : "circle")
+                                }
+                                .buttonStyle(.plain)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(candidate.name).font(.headline)
+                                    Text(candidate.detail).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(candidate.size.fileSize).font(.headline.monospacedDigit())
+                            }
+                            .padding(.vertical, 5)
+                        }
+                    } header: {
+                        HStack {
+                            Text(section.title)
+                            if section.isScanning { ProgressView().controlSize(.mini) }
+                        }
+                    }
+                }
             }
             .listStyle(.inset)
         }
+    }
+
+    private var cacheStatus: String {
+        if viewModel.isUsingCachedResults && viewModel.isScanning {
+            return "Showing cached results while fresh analysis runs."
+        }
+        if viewModel.isUsingCachedResults {
+            return "Showing cached results. Run Analyze to refresh them."
+        }
+        return "Completed sections appear immediately while the remaining analysis continues."
     }
 
     private var selectionBar: some View {

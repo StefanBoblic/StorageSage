@@ -43,9 +43,7 @@ final class LargeFilesViewModel: ObservableObject {
         isScanning = true
         let analyzer = analyzer
         let threshold = minimumSize
-        files = await Task.detached(priority: .utility) {
-            analyzer.analyze(minimumSize: threshold)
-        }.value
+        files = await analyzer.analyze(minimumSize: threshold)
         scannedAt = Date()
         isStale = false
         isScanning = false
@@ -55,6 +53,8 @@ final class LargeFilesViewModel: ObservableObject {
         guard scannedAt != nil else { return }
         if batch.requiresFullRescan || batch.affects(LargeFileAnalyzer.defaultRoots()) {
             isStale = true
+            let analyzer = analyzer
+            Task { await analyzer.invalidate(batch) }
         }
     }
 
