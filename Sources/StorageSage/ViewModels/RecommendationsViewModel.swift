@@ -12,6 +12,10 @@ struct RecommendationSection: Identifiable {
     let title: String
     let candidates: [CleanupCandidate]
     let isScanning: Bool
+
+    var shouldDisplay: Bool {
+        id != "installers" || isScanning || !candidates.isEmpty
+    }
 }
 
 @MainActor

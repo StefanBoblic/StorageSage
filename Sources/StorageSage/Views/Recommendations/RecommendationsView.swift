@@ -90,7 +90,7 @@ struct RecommendationsView: View {
                         }
                     }
                 }
-                ForEach(viewModel.sections) { section in
+                ForEach(viewModel.sections.filter(\.shouldDisplay)) { section in
                     Section {
                         if section.candidates.isEmpty && section.isScanning {
                             ProgressView("Scanning \(section.title)…").padding(.vertical, 8)
