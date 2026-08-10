@@ -21,6 +21,7 @@ struct CandidateRow: View {
                         .foregroundStyle(viewModel.selectedIDs.contains(candidate.id) ? Color.accentColor : .secondary)
                 }
                 .buttonStyle(.plain)
+                .disabled(!viewModel.canModifySelection)
                 .accessibilityLabel(viewModel.selectedIDs.contains(candidate.id) ? "Deselect" : "Select")
             }
             Image(systemName: candidate.category.icon)
@@ -56,6 +57,8 @@ struct CandidateRow: View {
         .padding(.horizontal, 15)
         .padding(.vertical, 12)
         .contentShape(Rectangle())
-        .onTapGesture { if showsSelection { viewModel.toggle(candidate) } }
+        .onTapGesture {
+            if showsSelection && viewModel.canModifySelection { viewModel.toggle(candidate) }
+        }
     }
 }

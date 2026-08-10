@@ -44,6 +44,50 @@ final class StorageViewModelTests: XCTestCase {
         XCTAssertEqual(scanner.callCount, 1)
     }
 
+    func testSelectionSeparatesTrashAndImmediateDeletionBytes() async {
+        let trashCandidate = makeCandidate()
+        let simulatorCandidate = CleanupCandidate(
+            id: "orphaned-simulators",
+            name: "Unavailable Simulator Devices",
+            detail: "Test",
+            path: "/virtual/simulators",
+            category: .simulators,
+            safety: .safe,
+            strategy: .deleteUnavailableSimulators,
+            size: 30,
+            modifiedAt: nil
+        )
+        let scanner = SequencedScanner(results: [
+            ScanResult(candidates: [trashCandidate, simulatorCandidate], volume: VolumeSnapshot(), inaccessiblePaths: [], scannedAt: .now)
+        ])
+        let viewModel = StorageViewModel(scanner: scanner, cleaner: PreviewCleaner())
+
+        await viewModel.scan()
+        viewModel.toggle(trashCandidate)
+        viewModel.toggle(simulatorCandidate)
+
+        XCTAssertEqual(viewModel.selectedSize, 50)
+        XCTAssertEqual(viewModel.selectedTrashSize, 20)
+        XCTAssertEqual(viewModel.selectedImmediateDeletionSize, 30)
+    }
+
+    func testChangingSelectionClearsPreviousCleanupProgress() async {
+        let candidate = makeCandidate()
+        let scanner = SequencedScanner(results: [
+            ScanResult(candidates: [candidate], volume: VolumeSnapshot(), inaccessiblePaths: [], scannedAt: .now)
+        ])
+        let viewModel = StorageViewModel(scanner: scanner, cleaner: ProgressOnlyCleaner())
+
+        await viewModel.scan()
+        viewModel.toggle(candidate)
+        await viewModel.cleanSelected()
+        XCTAssertNotNil(viewModel.cleanupProgress)
+
+        viewModel.toggle(candidate)
+        XCTAssertNil(viewModel.cleanupProgress)
+        XCTAssertNil(viewModel.lastReport)
+    }
+
     private func makeCandidate() -> CleanupCandidate {
         let url = URL(fileURLWithPath: "/virtual/cache")
         return CleanupCandidate(
@@ -84,8 +128,8 @@ private struct SuccessfulCleaner: StorageCleaning {
         progress: @escaping @Sendable (CleanupProgress) -> Void
     ) -> CleanupReport {
         CleanupReport(
-            reclaimed: candidates.reduce(0) { $0 + $1.size },
-            removedCount: candidates.count
+            movedToTrashBytes: candidates.reduce(0) { $0 + $1.size },
+            movedToTrashCount: candidates.count
         )
     }
 }
@@ -100,5 +144,23 @@ private struct PreviewCleaner: StorageCleaning {
             estimatedReclaimable: candidates.reduce(0) { $0 + $1.size },
             isDryRun: true
         )
+    }
+}
+
+private struct ProgressOnlyCleaner: StorageCleaning {
+    func clean(
+        _ candidates: [CleanupCandidate],
+        progress: @escaping @Sendable (CleanupProgress) -> Void
+    ) -> CleanupReport {
+        let total = candidates.reduce(0) { $0 + $1.size }
+        progress(CleanupProgress(
+            totalBytes: total,
+            totalCount: candidates.count,
+            isDryRun: false,
+            processedBytes: total,
+            movedToTrashBytes: total,
+            processedCount: candidates.count
+        ))
+        return CleanupReport()
     }
 }

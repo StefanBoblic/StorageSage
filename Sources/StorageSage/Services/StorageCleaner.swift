@@ -65,14 +65,30 @@ struct StorageCleaner: StorageCleaning {
             if report.isDryRun {
                 report.previewedCount += 1
                 report.estimatedReclaimable += candidate.size
+                cleanupProgress.eligibleBytes += candidate.size
+                switch candidate.strategy {
+                case .trash:
+                    report.estimatedTrashBytes += candidate.size
+                case .deleteUnavailableSimulators:
+                    report.estimatedImmediateDeletionBytes += candidate.size
+                case .none:
+                    break
+                }
                 continue
             }
 
             do {
-                if try execute(candidate) {
-                    report.reclaimed += candidate.size
-                    report.removedCount += 1
-                    cleanupProgress.removedBytes += candidate.size
+                switch try execute(candidate) {
+                case .movedToTrash:
+                    report.movedToTrashBytes += candidate.size
+                    report.movedToTrashCount += 1
+                    cleanupProgress.movedToTrashBytes += candidate.size
+                case .deletedImmediately:
+                    report.deletedImmediatelyBytes += candidate.size
+                    report.deletedImmediatelyCount += 1
+                    cleanupProgress.deletedImmediatelyBytes += candidate.size
+                case .noChange:
+                    break
                 }
             } catch {
                 report.errors.append("\(candidate.name): \(error.localizedDescription)")
@@ -82,18 +98,18 @@ struct StorageCleaner: StorageCleaning {
         return report
     }
 
-    private func execute(_ candidate: CleanupCandidate) throws -> Bool {
+    private func execute(_ candidate: CleanupCandidate) throws -> CleanupOutcome {
         switch candidate.strategy {
         case .trash(let url):
-            guard FileManager.default.fileExists(atPath: url.path) else { return false }
+            guard FileManager.default.fileExists(atPath: url.path) else { return .noChange }
             var resultingURL: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
-            return true
+            return .movedToTrash
         case .deleteUnavailableSimulators:
             try deleteUnavailableSimulators()
-            return true
+            return .deletedImmediately
         case .none:
-            return false
+            return .noChange
         }
     }
 
@@ -119,4 +135,10 @@ struct StorageCleaner: StorageCleaning {
             userInfo: [NSLocalizedDescriptionKey: message]
         )
     }
+}
+
+private enum CleanupOutcome {
+    case movedToTrash
+    case deletedImmediately
+    case noChange
 }
