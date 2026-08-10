@@ -25,7 +25,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .overview: return "chart.pie.fill"
         case .cleanup: return "sparkles"
         case .applications: return "square.grid.2x2.fill"
-        case .largeFiles: return "doc.badge.magnifyingglass"
+        case .largeFiles: return "doc.text.magnifyingglass"
         case .leftovers: return "shippingbox.and.arrow.backward.fill"
         case .duplicates: return "doc.on.doc.fill"
         case .recommendations: return "lightbulb.fill"
