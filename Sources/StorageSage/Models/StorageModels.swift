@@ -15,6 +15,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case largeFiles = "Large Files"
     case leftovers = "App Leftovers"
     case duplicates = "Duplicates"
+    case recommendations = "Recommendations"
 
     var id: String { rawValue }
     var icon: String {
@@ -25,6 +26,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .largeFiles: return "doc.badge.magnifyingglass"
         case .leftovers: return "shippingbox.and.arrow.backward.fill"
         case .duplicates: return "doc.on.doc.fill"
+        case .recommendations: return "lightbulb.fill"
         }
     }
 }
@@ -88,6 +90,8 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
     case developer = "Developer Tools"
     case appData = "App Data"
     case applications = "Applications"
+    case installers = "Installers & Archives"
+    case projectArtifacts = "Project Artifacts"
 
     var id: String { rawValue }
     var icon: String {
@@ -98,6 +102,8 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
         case .developer: return "terminal.fill"
         case .appData: return "externaldrive.fill"
         case .applications: return "app.fill"
+        case .installers: return "shippingbox.fill"
+        case .projectArtifacts: return "hammer.circle.fill"
         }
     }
     var color: Color {
@@ -108,6 +114,8 @@ enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
         case .developer: return .purple
         case .appData: return .teal
         case .applications: return .pink
+        case .installers: return .mint
+        case .projectArtifacts: return .cyan
         }
     }
 }
@@ -135,6 +143,7 @@ enum SafetyLevel: String, Codable, Sendable {
 
 enum CleanupStrategy: Hashable, Sendable {
     case trash(URL)
+    case trashReviewedFile(URL)
     case deleteUnavailableSimulators
     case none
 }

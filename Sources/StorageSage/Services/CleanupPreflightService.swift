@@ -32,7 +32,7 @@ struct CleanupPreflightService: CleanupPreflightMeasuring {
 
         for candidate in candidates {
             switch candidate.strategy {
-            case .trash(let url):
+            case .trash(let url), .trashReviewedFile(let url):
                 guard fileSystem.exists(url) else {
                     unavailableNames.append(candidate.name)
                     continue

@@ -73,7 +73,7 @@ struct StorageCleaner: StorageCleaning {
                 report.estimatedReclaimable += candidate.size
                 cleanupProgress.eligibleBytes += candidate.size
                 switch candidate.strategy {
-                case .trash:
+                case .trash, .trashReviewedFile:
                     report.estimatedTrashBytes += candidate.size
                 case .deleteUnavailableSimulators:
                     report.estimatedImmediateDeletionBytes += candidate.size
@@ -109,7 +109,7 @@ struct StorageCleaner: StorageCleaning {
 
     private func execute(_ candidate: CleanupCandidate) throws -> CleanupOutcome {
         switch candidate.strategy {
-        case .trash(let url):
+        case .trash(let url), .trashReviewedFile(let url):
             guard FileManager.default.fileExists(atPath: url.path) else { return .noChange }
             var resultingURL: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)

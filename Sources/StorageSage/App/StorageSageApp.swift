@@ -14,6 +14,7 @@ struct StorageSageApp: App {
     @StateObject private var appLeftoversViewModel = AppLeftoversViewModel()
     @StateObject private var duplicatesViewModel = DuplicatesViewModel()
     @StateObject private var fileChanges = FSEventsMonitor()
+    @StateObject private var recommendationsViewModel = RecommendationsViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -23,6 +24,7 @@ struct StorageSageApp: App {
                 .environmentObject(appLeftoversViewModel)
                 .environmentObject(duplicatesViewModel)
                 .environmentObject(fileChanges)
+                .environmentObject(recommendationsViewModel)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
                 .task { fileChanges.start() }

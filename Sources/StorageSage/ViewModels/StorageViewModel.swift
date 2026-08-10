@@ -49,8 +49,10 @@ final class StorageViewModel: ObservableObject {
     var selectedSize: Int64 { selectedCandidates.reduce(0) { $0 + $1.size } }
     var selectedTrashSize: Int64 {
         selectedCandidates.reduce(0) { total, candidate in
-            if case .trash = candidate.strategy { return total + candidate.size }
-            return total
+            switch candidate.strategy {
+            case .trash, .trashReviewedFile: return total + candidate.size
+            default: return total
+            }
         }
     }
     var selectedImmediateDeletionSize: Int64 {

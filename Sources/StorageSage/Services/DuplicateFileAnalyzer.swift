@@ -82,7 +82,7 @@ struct DuplicateFileAnalyzer: DuplicateFileAnalyzing {
                     path: file.url.path,
                     category: .appData,
                     safety: .review,
-                    strategy: .trash(file.url),
+                    strategy: .trashReviewedFile(file.url),
                     size: allocatedSize,
                     modifiedAt: fileSystem.modificationDate(of: file.url)
                 ))
