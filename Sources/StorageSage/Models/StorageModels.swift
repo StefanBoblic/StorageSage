@@ -16,6 +16,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case leftovers = "App Leftovers"
     case duplicates = "Duplicates"
     case recommendations = "Recommendations"
+    case snapshots = "APFS Snapshots"
 
     var id: String { rawValue }
     var icon: String {
@@ -27,6 +28,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .leftovers: return "shippingbox.and.arrow.backward.fill"
         case .duplicates: return "doc.on.doc.fill"
         case .recommendations: return "lightbulb.fill"
+        case .snapshots: return "clock.arrow.trianglehead.counterclockwise.rotate.90"
         }
     }
 }
@@ -81,6 +83,20 @@ struct DuplicateGroup: Identifiable, Hashable, Sendable {
     var id: String { fingerprint }
     var fileSize: Int64 { files.first?.size ?? 0 }
     var reclaimableSize: Int64 { fileSize * Int64(max(files.count - 1, 0)) }
+}
+
+struct APFSSnapshotRecord: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let createdAt: Date?
+    let isPurgeable: Bool
+    let limitsContainerShrink: Bool
+
+    var kind: String {
+        if name.hasPrefix("com.apple.TimeMachine") { return "Time Machine" }
+        if name.hasPrefix("com.apple.os.update") { return "macOS Update" }
+        return "APFS"
+    }
 }
 
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {

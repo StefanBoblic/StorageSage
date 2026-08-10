@@ -15,6 +15,7 @@ struct StorageSageApp: App {
     @StateObject private var duplicatesViewModel = DuplicatesViewModel()
     @StateObject private var fileChanges = FSEventsMonitor()
     @StateObject private var recommendationsViewModel = RecommendationsViewModel()
+    @StateObject private var snapshotsViewModel = APFSSnapshotsViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -25,6 +26,7 @@ struct StorageSageApp: App {
                 .environmentObject(duplicatesViewModel)
                 .environmentObject(fileChanges)
                 .environmentObject(recommendationsViewModel)
+                .environmentObject(snapshotsViewModel)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
                 .task { fileChanges.start() }

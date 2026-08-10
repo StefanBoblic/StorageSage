@@ -44,6 +44,7 @@ struct ContentView: View {
                 case .leftovers: AppLeftoversView()
                 case .duplicates: DuplicatesView()
                 case .recommendations: RecommendationsView()
+                case .snapshots: APFSSnapshotsView()
                 }
             }
             .toolbar {
