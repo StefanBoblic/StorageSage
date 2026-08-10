@@ -14,6 +14,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case applications = "Applications"
     case largeFiles = "Large Files"
     case leftovers = "App Leftovers"
+    case duplicates = "Duplicates"
 
     var id: String { rawValue }
     var icon: String {
@@ -23,6 +24,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .applications: return "square.grid.2x2.fill"
         case .largeFiles: return "doc.badge.magnifyingglass"
         case .leftovers: return "shippingbox.and.arrow.backward.fill"
+        case .duplicates: return "doc.on.doc.fill"
         }
     }
 }
@@ -59,6 +61,24 @@ struct AppLeftoverRecord: Identifiable, Hashable, Sendable {
             modifiedAt: modifiedAt
         )
     }
+}
+
+struct DuplicateFileRecord: Identifiable, Hashable, Sendable {
+    let url: URL
+    let size: Int64
+    let modifiedAt: Date?
+
+    var id: String { url.path }
+    var name: String { url.lastPathComponent }
+}
+
+struct DuplicateGroup: Identifiable, Hashable, Sendable {
+    let fingerprint: String
+    let files: [DuplicateFileRecord]
+
+    var id: String { fingerprint }
+    var fileSize: Int64 { files.first?.size ?? 0 }
+    var reclaimableSize: Int64 { fileSize * Int64(max(files.count - 1, 0)) }
 }
 
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {

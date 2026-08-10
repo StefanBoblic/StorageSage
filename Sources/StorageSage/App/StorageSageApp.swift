@@ -12,6 +12,7 @@ struct StorageSageApp: App {
     @StateObject private var viewModel = StorageViewModel()
     @StateObject private var largeFilesViewModel = LargeFilesViewModel()
     @StateObject private var appLeftoversViewModel = AppLeftoversViewModel()
+    @StateObject private var duplicatesViewModel = DuplicatesViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,7 @@ struct StorageSageApp: App {
                 .environmentObject(viewModel)
                 .environmentObject(largeFilesViewModel)
                 .environmentObject(appLeftoversViewModel)
+                .environmentObject(duplicatesViewModel)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
         }
