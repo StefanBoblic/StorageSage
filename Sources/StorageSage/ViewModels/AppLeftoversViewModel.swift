@@ -44,6 +44,10 @@ final class AppLeftoversViewModel: ObservableObject {
         isScanning = false
     }
 
+    func noteFileChanges(_ batch: FileChangeBatch) {
+        analyzer.noteFileChanges(batch)
+    }
+
     func toggle(_ record: AppLeftoverRecord) {
         guard canModifySelection else { return }
         lastReport = nil
@@ -87,7 +91,8 @@ final class AppLeftoversViewModel: ObservableObject {
         }.value
         selectedIDs.removeAll()
         if lastReport?.removedCount ?? 0 > 0 {
-            await scan()
+            let removed = Set(selection.map(\.id))
+            records.removeAll { removed.contains($0.id) }
         }
         isCleaning = false
     }

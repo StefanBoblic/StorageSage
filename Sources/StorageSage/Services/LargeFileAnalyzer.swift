@@ -8,81 +8,34 @@
 import Foundation
 
 protocol LargeFileAnalyzing: Sendable {
-    func analyze(minimumSize: Int64) -> [LargeFileRecord]
+    func analyze(minimumSize: Int64) async -> [LargeFileRecord]
+    func invalidate(_ batch: FileChangeBatch) async
 }
 
 struct LargeFileAnalyzer: LargeFileAnalyzing {
-    private let roots: [URL]
-    private let spotlight: any SpotlightFileQuerying
-    private let exclusions: any ScanExclusionProviding
+    private let index: any FileMetadataIndexing
+
+    init(index: any FileMetadataIndexing = PersonalFileMetadataIndex.shared) {
+        self.index = index
+    }
 
     init(
-        roots: [URL] = LargeFileAnalyzer.defaultRoots(),
+        roots: [URL],
         spotlight: any SpotlightFileQuerying = SpotlightFileQuery(),
         exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
     ) {
-        self.roots = roots
-        self.spotlight = spotlight
-        self.exclusions = exclusions
+        index = PersonalFileMetadataIndex(roots: roots, spotlight: spotlight, exclusions: exclusions)
     }
 
-    func analyze(minimumSize: Int64) -> [LargeFileRecord] {
-        let keys: [URLResourceKey] = [
-            .isRegularFileKey,
-            .isSymbolicLinkKey,
-            .fileAllocatedSizeKey,
-            .totalFileAllocatedSizeKey,
-            .contentModificationDateKey,
-            .isUbiquitousItemKey,
-            .ubiquitousItemDownloadingStatusKey
-        ]
-        var records: [LargeFileRecord] = []
-        let fileManager = FileManager.default
-
-        for root in roots where fileManager.fileExists(atPath: root.path) && !exclusions.excludes(root) {
-            if let spotlightURLs = spotlight.files(in: root, minimumSize: minimumSize) {
-                records.append(contentsOf: spotlightURLs.compactMap {
-                    exclusions.excludes($0) ? nil : record(for: $0, minimumSize: minimumSize, keys: Set(keys))
-                })
-                continue
-            }
-            guard let enumerator = fileManager.enumerator(
-                at: root,
-                includingPropertiesForKeys: keys,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants],
-                errorHandler: { _, _ in true }
-            ) else { continue }
-
-            for case let url as URL in enumerator {
-                if exclusions.excludes(url) {
-                    enumerator.skipDescendants()
-                    continue
-                }
-                if let record = record(for: url, minimumSize: minimumSize, keys: Set(keys)) {
-                    records.append(record)
-                }
-            }
-        }
-        return Dictionary(grouping: records, by: \.id)
-            .compactMap(\.value.first)
+    func analyze(minimumSize: Int64) async -> [LargeFileRecord] {
+        await index.files(minimumSize: minimumSize)
+            .filter { $0.allocatedSize >= minimumSize }
+            .map { LargeFileRecord(url: $0.url, size: $0.allocatedSize, modifiedAt: $0.modifiedAt) }
             .sorted { $0.size > $1.size }
     }
 
-    private func record(
-        for url: URL,
-        minimumSize: Int64,
-        keys: Set<URLResourceKey>
-    ) -> LargeFileRecord? {
-        guard let values = try? url.resourceValues(forKeys: keys),
-              values.isRegularFile == true,
-              values.isSymbolicLink != true else { return nil }
-        if values.isUbiquitousItem == true,
-           values.ubiquitousItemDownloadingStatus != .current {
-            return nil
-        }
-        let size = Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
-        guard size >= minimumSize else { return nil }
-        return LargeFileRecord(url: url, size: size, modifiedAt: values.contentModificationDate)
+    func invalidate(_ batch: FileChangeBatch) async {
+        await index.invalidate(batch)
     }
 
     static func defaultRoots(fileManager: FileManager = .default) -> [URL] {

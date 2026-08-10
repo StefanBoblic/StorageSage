@@ -14,7 +14,10 @@ final class CleanupHistoryViewModel: ObservableObject {
 
     init(store: any CleanupHistoryStoring = DiskCleanupHistoryStore()) {
         self.store = store
-        records = store.load()
+        Task { [weak self] in
+            let loaded = await Task.detached(priority: .utility) { store.load() }.value
+            self?.records = loaded
+        }
     }
 
     func record(source: String, candidates: [CleanupCandidate], report: CleanupReport) {
@@ -32,12 +35,17 @@ final class CleanupHistoryViewModel: ObservableObject {
             errorCount: report.errors.count,
             skippedCount: report.skipped.count
         )
-        store.append(entry)
-        records = store.load()
+        let store = store
+        Task { [weak self] in
+            await Task.detached(priority: .utility) { store.append(entry) }.value
+            let loaded = await Task.detached(priority: .utility) { store.load() }.value
+            self?.records = loaded
+        }
     }
 
     func clear() {
-        store.clear()
         records = []
+        let store = store
+        Task.detached(priority: .utility) { store.clear() }
     }
 }

@@ -9,6 +9,7 @@ import Foundation
 
 protocol AppLeftoverAnalyzing: Sendable {
     func analyze() -> [AppLeftoverRecord]
+    func noteFileChanges(_ batch: FileChangeBatch)
 }
 
 struct AppLeftoverAnalyzer: AppLeftoverAnalyzing {
@@ -16,77 +17,71 @@ struct AppLeftoverAnalyzer: AppLeftoverAnalyzing {
     private let installedBundleIdentifiers: Set<String>?
     private let fileSystem: any FileSystemInspecting
     private let exclusions: any ScanExclusionProviding
+    private let applications: any InstalledApplicationIndexing
 
     init(
         libraryURL: URL? = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first,
         installedBundleIdentifiers: Set<String>? = nil,
         fileSystem: any FileSystemInspecting = FileSystemInspector(),
-        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore()
+        exclusions: any ScanExclusionProviding = UserDefaultsScanExclusionStore(),
+        applications: any InstalledApplicationIndexing = InstalledApplicationIndex.shared
     ) {
         self.libraryURL = libraryURL
         self.installedBundleIdentifiers = installedBundleIdentifiers
         self.fileSystem = fileSystem
         self.exclusions = exclusions
+        self.applications = applications
     }
 
     func analyze() -> [AppLeftoverRecord] {
         guard let libraryURL else { return [] }
-        let installed = installedBundleIdentifiers ?? discoverInstalledBundleIdentifiers()
+        let installed = installedBundleIdentifiers ?? applications.bundleIdentifiers()
+        let exclusionMatcher = exclusions.matcher()
         let locations = [
             LeftoverLocation(component: "Caches", displayName: "Caches", suffix: nil),
             LeftoverLocation(component: "Containers", displayName: "Containers", suffix: nil),
             LeftoverLocation(component: "Preferences", displayName: "Preferences", suffix: ".plist"),
             LeftoverLocation(component: "Saved Application State", displayName: "Saved Application State", suffix: ".savedState")
         ]
-        var records: [AppLeftoverRecord] = []
+        var pending: [(URL, String, String)] = []
 
         for location in locations {
             let directory = libraryURL.appendingPathComponent(location.component, isDirectory: true)
             guard let children = try? fileSystem.children(of: directory) else { continue }
             for child in children {
-                guard !exclusions.excludes(child) else { continue }
+                guard !exclusionMatcher.excludes(child) else { continue }
                 let identifier = normalizedIdentifier(from: child.lastPathComponent, suffix: location.suffix)
                 guard isBundleIdentifier(identifier),
                       !identifier.hasPrefix("com.apple."),
                       !installed.contains(identifier) else { continue }
-                let size = fileSystem.allocatedSize(of: child)
-                guard size > 0 else { continue }
-                records.append(AppLeftoverRecord(
-                    url: child,
-                    bundleIdentifier: identifier,
-                    locationName: location.displayName,
-                    size: size,
-                    modifiedAt: fileSystem.modificationDate(of: child)
-                ))
+                pending.append((child, identifier, location.displayName))
             }
+        }
+        let sizes = fileSystem.allocatedSizes(of: pending.map(\.0))
+        let records = pending.compactMap { url, identifier, locationName -> AppLeftoverRecord? in
+            let size = sizes[url] ?? 0
+            guard size > 0 else { return nil }
+            return AppLeftoverRecord(
+                url: url,
+                bundleIdentifier: identifier,
+                locationName: locationName,
+                size: size,
+                modifiedAt: fileSystem.modificationDate(of: url)
+            )
         }
         return records.sorted { $0.size > $1.size }
     }
 
-    private func discoverInstalledBundleIdentifiers() -> Set<String> {
+    func noteFileChanges(_ batch: FileChangeBatch) {
         let fileManager = FileManager.default
         let roots = [
             FileManager.SearchPathDomainMask.userDomainMask,
             .localDomainMask,
             .systemDomainMask
         ].flatMap { fileManager.urls(for: .applicationDirectory, in: $0) }
-        var identifiers: Set<String> = []
-
-        for root in roots {
-            guard let enumerator = fileManager.enumerator(
-                at: root,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles],
-                errorHandler: { _, _ in true }
-            ) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == "app" {
-                if let identifier = Bundle(url: url)?.bundleIdentifier {
-                    identifiers.insert(identifier)
-                }
-                enumerator.skipDescendants()
-            }
+        if batch.requiresFullRescan || batch.affects(roots) {
+            applications.invalidate()
         }
-        return identifiers
     }
 
     private func normalizedIdentifier(from name: String, suffix: String?) -> String {

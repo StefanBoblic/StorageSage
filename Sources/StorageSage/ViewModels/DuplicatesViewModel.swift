@@ -54,6 +54,8 @@ final class DuplicatesViewModel: ObservableObject {
         guard !groups.isEmpty else { return }
         if batch.requiresFullRescan || batch.affects(LargeFileAnalyzer.defaultRoots()) {
             isStale = true
+            let analyzer = analyzer
+            Task { await analyzer.invalidate(batch) }
         }
     }
 
@@ -106,9 +108,16 @@ final class DuplicatesViewModel: ObservableObject {
         lastReport = await Task.detached(priority: .userInitiated) {
             cleaner.clean(reverifiedCandidates) { _ in }
         }.value
+        let removedPaths = Set(reverifiedCandidates.map(\.path))
         selectedPaths.removeAll()
         preparedCandidates.removeAll()
-        if lastReport?.removedCount ?? 0 > 0 { await scan() }
+        if lastReport?.removedCount ?? 0 > 0 {
+            groups = groups.compactMap { group in
+                let remaining = group.files.filter { !removedPaths.contains($0.url.path) }
+                guard remaining.count > 1 else { return nil }
+                return DuplicateGroup(fingerprint: group.fingerprint, files: remaining)
+            }
+        }
         isCleaning = false
     }
 

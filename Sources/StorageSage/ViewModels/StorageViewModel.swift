@@ -30,6 +30,7 @@ final class StorageViewModel: ObservableObject {
     private let scanCache: any ScanResultCaching
     private let preflight: any CleanupPreflightMeasuring
     private var hasScanned = false
+    private var backgroundRefreshTask: Task<Void, Never>?
 
     init(
         scanner: any StorageScanning = StorageScanner(),
@@ -169,11 +170,23 @@ final class StorageViewModel: ObservableObject {
         await progressTask.value
 
         lastReport = report
+        let cleanedIDs = Set(selection.map(\.id))
         selectedIDs.removeAll()
         if report.removedCount > 0 {
-            await scan()
+            candidates.removeAll { cleanedIDs.contains($0.id) }
+            if let available = report.availableBytesAfter {
+                volume.available = available
+            }
         }
         isCleaning = false
+        if report.removedCount > 0 {
+            backgroundRefreshTask?.cancel()
+            backgroundRefreshTask = Task { [weak self] in await self?.scan() }
+        }
+    }
+
+    func waitForBackgroundRefresh() async {
+        await backgroundRefreshTask?.value
     }
 
     private func resetCleanupFeedback() {
