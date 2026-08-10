@@ -10,6 +10,7 @@ import SwiftUI
 struct DuplicatesView: View {
     @EnvironmentObject private var viewModel: DuplicatesViewModel
     @EnvironmentObject private var fileChanges: FSEventsMonitor
+    @EnvironmentObject private var history: CleanupHistoryViewModel
     @AppStorage(StoragePreferenceKeys.dryRun) private var dryRun = false
     @State private var showingConfirmation = false
     @State private var showingReport = false
@@ -28,7 +29,11 @@ struct DuplicatesView: View {
         .confirmationDialog("Remove verified duplicates?", isPresented: $showingConfirmation, titleVisibility: .visible) {
             Button(dryRun ? "Preview Only" : "Move to Trash", role: dryRun ? nil : .destructive) {
                 Task {
+                    let selectedCandidates = viewModel.preparedCandidates
                     await viewModel.cleanSelected()
+                    if let report = viewModel.lastReport {
+                        history.record(source: "Duplicates", candidates: selectedCandidates, report: report)
+                    }
                     showingReport = true
                 }
             }

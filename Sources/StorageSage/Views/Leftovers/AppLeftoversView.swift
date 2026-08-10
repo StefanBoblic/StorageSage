@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AppLeftoversView: View {
     @EnvironmentObject private var viewModel: AppLeftoversViewModel
+    @EnvironmentObject private var history: CleanupHistoryViewModel
     @AppStorage(StoragePreferenceKeys.dryRun) private var dryRun = false
     @State private var showingConfirmation = false
     @State private var showingReport = false
@@ -24,7 +25,11 @@ struct AppLeftoversView: View {
         .confirmationDialog("Review app leftovers?", isPresented: $showingConfirmation, titleVisibility: .visible) {
             Button(dryRun ? "Preview Only" : "Move to Trash", role: dryRun ? nil : .destructive) {
                 Task {
+                    let selectedCandidates = viewModel.selectedRecords.map(\.cleanupCandidate)
                     await viewModel.cleanSelected()
+                    if let report = viewModel.lastReport {
+                        history.record(source: "App Leftovers", candidates: selectedCandidates, report: report)
+                    }
                     showingReport = true
                 }
             }

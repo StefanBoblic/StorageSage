@@ -16,6 +16,7 @@ struct StorageSageApp: App {
     @StateObject private var fileChanges = FSEventsMonitor()
     @StateObject private var recommendationsViewModel = RecommendationsViewModel()
     @StateObject private var snapshotsViewModel = APFSSnapshotsViewModel()
+    @StateObject private var cleanupHistory = CleanupHistoryViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -27,6 +28,7 @@ struct StorageSageApp: App {
                 .environmentObject(fileChanges)
                 .environmentObject(recommendationsViewModel)
                 .environmentObject(snapshotsViewModel)
+                .environmentObject(cleanupHistory)
                 .frame(minWidth: 980, minHeight: 660)
                 .task { await viewModel.scanIfNeeded() }
                 .task { fileChanges.start() }

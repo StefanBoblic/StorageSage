@@ -10,6 +10,7 @@ import SwiftUI
 struct RecommendationsView: View {
     @EnvironmentObject private var viewModel: RecommendationsViewModel
     @EnvironmentObject private var fileChanges: FSEventsMonitor
+    @EnvironmentObject private var history: CleanupHistoryViewModel
     @AppStorage(StoragePreferenceKeys.dryRun) private var dryRun = false
     @State private var showingConfirmation = false
     @State private var showingReport = false
@@ -25,7 +26,14 @@ struct RecommendationsView: View {
         .onChange(of: fileChanges.revision) { viewModel.noteFileChanges(fileChanges.latestBatch) }
         .confirmationDialog("Review selected files?", isPresented: $showingConfirmation, titleVisibility: .visible) {
             Button(dryRun ? "Preview Only" : "Move to Trash", role: dryRun ? nil : .destructive) {
-                Task { await viewModel.cleanSelected(); showingReport = true }
+                Task {
+                    let selectedCandidates = viewModel.selectedCandidates
+                    await viewModel.cleanSelected()
+                    if let report = viewModel.lastReport {
+                        history.record(source: "Recommendations", candidates: selectedCandidates, report: report)
+                    }
+                    showingReport = true
+                }
             }
             Button("Cancel", role: .cancel) { }
         } message: {

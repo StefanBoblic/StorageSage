@@ -45,6 +45,7 @@ struct ContentView: View {
                 case .duplicates: DuplicatesView()
                 case .recommendations: RecommendationsView()
                 case .snapshots: APFSSnapshotsView()
+                case .history: CleanupHistoryView()
                 }
             }
             .toolbar {

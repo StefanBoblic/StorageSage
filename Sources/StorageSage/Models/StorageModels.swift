@@ -17,6 +17,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case duplicates = "Duplicates"
     case recommendations = "Recommendations"
     case snapshots = "APFS Snapshots"
+    case history = "Cleanup History"
 
     var id: String { rawValue }
     var icon: String {
@@ -29,6 +30,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .duplicates: return "doc.on.doc.fill"
         case .recommendations: return "lightbulb.fill"
         case .snapshots: return "clock.arrow.trianglehead.counterclockwise.rotate.90"
+        case .history: return "clock.fill"
         }
     }
 }
@@ -97,6 +99,26 @@ struct APFSSnapshotRecord: Identifiable, Hashable, Sendable {
         if name.hasPrefix("com.apple.os.update") { return "macOS Update" }
         return "APFS"
     }
+}
+
+struct CleanupHistoryItem: Identifiable, Codable, Hashable, Sendable {
+    let path: String
+    let name: String
+    let estimatedBytes: Int64
+    var id: String { path }
+}
+
+struct CleanupHistoryRecord: Identifiable, Codable, Hashable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    let source: String
+    let items: [CleanupHistoryItem]
+    let movedToTrashBytes: Int64
+    let deletedImmediatelyBytes: Int64
+    let actualFreedBytes: Int64?
+    let isDryRun: Bool
+    let errorCount: Int
+    let skippedCount: Int
 }
 
 enum StorageCategory: String, CaseIterable, Identifiable, Codable, Sendable {
