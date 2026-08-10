@@ -38,34 +38,58 @@ struct LargeFilesView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .bottom, spacing: 16) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Large & Old Files").font(.largeTitle.bold())
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                Text("Large & Old Files")
+                    .font(.largeTitle.bold())
+                Spacer()
+                if viewModel.isStale {
+                    Label("Files changed", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Button("Analyze Files") { Task { await viewModel.scan() } }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isScanning)
+            }
+
+            HStack(spacing: 16) {
                 Text("Review large files in Desktop, Documents, Downloads, Movies, Music, and Pictures.")
                     .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if viewModel.isStale {
-                Label("Files changed", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption).foregroundStyle(.orange)
-            }
-            Picker("Minimum Size", selection: $viewModel.minimumSize) {
-                Text("100 MB+").tag(Int64(100_000_000))
-                Text("500 MB+").tag(Int64(500_000_000))
-                Text("1 GB+").tag(Int64(1_000_000_000))
-            }
-            .frame(width: 130)
-            Picker("Sort", selection: $viewModel.sortOrder) {
-                ForEach(LargeFilesViewModel.SortOrder.allCases) { order in
-                    Text(order.rawValue).tag(order)
+                    .layoutPriority(1)
+                Spacer(minLength: 16)
+                pickerField(title: "Minimum Size", width: 130) {
+                    Picker("Minimum Size", selection: $viewModel.minimumSize) {
+                        Text("100 MB+").tag(Int64(100_000_000))
+                        Text("500 MB+").tag(Int64(500_000_000))
+                        Text("1 GB+").tag(Int64(1_000_000_000))
+                    }
+                }
+                pickerField(title: "Sort", width: 150) {
+                    Picker("Sort", selection: $viewModel.sortOrder) {
+                        ForEach(LargeFilesViewModel.SortOrder.allCases) { order in
+                            Text(order.rawValue).tag(order)
+                        }
+                    }
                 }
             }
-            .frame(width: 150)
-            Button("Analyze Files") { Task { await viewModel.scan() } }
-                .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isScanning)
         }
         .padding(24)
+    }
+
+    private func pickerField<Content: View>(
+        title: String,
+        width: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .fixedSize()
+            content()
+                .labelsHidden()
+                .frame(width: width)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
