@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var viewModel: StorageViewModel
+    @EnvironmentObject private var fileChanges: FSEventsMonitor
+    @EnvironmentObject private var diskGrowth: DiskGrowthViewModel
     @State private var selection: SidebarPage? = .overview
 
     var body: some View {
@@ -44,6 +46,7 @@ struct ContentView: View {
                 case .leftovers: AppLeftoversView()
                 case .duplicates: DuplicatesView()
                 case .recommendations: RecommendationsView()
+                case .growth: DiskGrowthView()
                 case .snapshots: APFSSnapshotsView()
                 case .history: CleanupHistoryView()
                 }
@@ -67,6 +70,12 @@ struct ContentView: View {
             if viewModel.isScanning && viewModel.candidates.isEmpty {
                 ScanningOverlay()
             }
+        }
+        .onChange(of: fileChanges.revision) {
+            diskGrowth.noteFileChanges(fileChanges.latestBatch)
+        }
+        .onChange(of: viewModel.scannedAt) {
+            diskGrowth.noteOverviewScan()
         }
     }
 }

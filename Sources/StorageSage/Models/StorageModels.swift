@@ -16,6 +16,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
     case leftovers = "App Leftovers"
     case duplicates = "Duplicates"
     case recommendations = "Recommendations"
+    case growth = "Growth Monitor"
     case snapshots = "APFS Snapshots"
     case history = "Cleanup History"
 
@@ -29,6 +30,7 @@ enum SidebarPage: String, CaseIterable, Identifiable {
         case .leftovers: return "shippingbox.and.arrow.backward.fill"
         case .duplicates: return "doc.on.doc.fill"
         case .recommendations: return "lightbulb.fill"
+        case .growth: return "chart.line.uptrend.xyaxis"
         case .snapshots: return "clock.arrow.trianglehead.counterclockwise.rotate.90"
         case .history: return "clock.fill"
         }
