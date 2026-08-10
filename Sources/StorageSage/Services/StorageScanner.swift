@@ -59,26 +59,30 @@ struct StorageScanner: StorageScanning {
     private func scanTargets(_ targets: [ScanTarget]) async -> TargetScanResult {
         let prepared = prepareJobs(for: targets)
         let limit = max(configuration.maximumConcurrentTasks, 1)
-        let candidates = await withTaskGroup(of: CleanupCandidate?.self, returning: [CleanupCandidate].self) { group in
-            var iterator = prepared.jobs.makeIterator()
+        let batchSize = min(max((prepared.jobs.count + (limit * 2) - 1) / (limit * 2), 1), 32)
+        let batches = stride(from: 0, to: prepared.jobs.count, by: batchSize).map {
+            Array(prepared.jobs[$0..<min($0 + batchSize, prepared.jobs.count)])
+        }
+        let scannedCandidates = await withTaskGroup(of: [CleanupCandidate].self, returning: [CleanupCandidate].self) { group in
+            var iterator = batches.makeIterator()
             var results: [CleanupCandidate] = []
 
-            for _ in 0..<min(limit, prepared.jobs.count) {
-                if let job = iterator.next() {
-                    group.addTask { candidate(for: job) }
+            for _ in 0..<min(limit, batches.count) {
+                if let batch = iterator.next() {
+                    group.addTask { candidates(for: batch) }
                 }
             }
 
-            while let result = await group.next() {
-                if let result { results.append(result) }
-                if let job = iterator.next() {
-                    group.addTask { candidate(for: job) }
+            while let batchResults = await group.next() {
+                results.append(contentsOf: batchResults)
+                if let batch = iterator.next() {
+                    group.addTask { candidates(for: batch) }
                 }
             }
             return results
         }
         return TargetScanResult(
-            candidates: candidates,
+            candidates: scannedCandidates,
             inaccessiblePaths: prepared.inaccessiblePaths
         )
     }
@@ -111,12 +115,16 @@ struct StorageScanner: StorageScanning {
         return PreparedScanJobs(jobs: jobs, inaccessiblePaths: inaccessiblePaths)
     }
 
-    private func candidate(for job: ScanJob) -> CleanupCandidate? {
+    private func candidates(for jobs: [ScanJob]) -> [CleanupCandidate] {
+        let sizes = fileSystem.allocatedSizes(of: jobs.map(\.url))
+        return jobs.compactMap { candidate(for: $0, size: sizes[$0.url] ?? 0) }
+    }
+
+    private func candidate(for job: ScanJob, size: Int64) -> CleanupCandidate? {
         switch job {
         case .item(let target):
-            return candidate(for: target)
+            return candidate(for: target, size: size)
         case .child(let child, let target, let minimumSize):
-            let size = fileSystem.allocatedSize(of: child)
             guard size >= minimumSize else { return nil }
             return CleanupCandidate(
                 id: child.path,
@@ -132,9 +140,8 @@ struct StorageScanner: StorageScanning {
         }
     }
 
-    private func candidate(for target: ScanTarget) -> CleanupCandidate? {
+    private func candidate(for target: ScanTarget, size: Int64) -> CleanupCandidate? {
         guard fileSystem.exists(target.url) else { return nil }
-        let size = fileSystem.allocatedSize(of: target.url)
         guard size > 0 else { return nil }
 
         return CleanupCandidate(
@@ -177,4 +184,11 @@ private struct PreparedScanJobs: Sendable {
 private enum ScanJob: Sendable {
     case item(ScanTarget)
     case child(URL, parent: ScanTarget, minimumSize: Int64)
+
+    var url: URL {
+        switch self {
+        case .item(let target): return target.url
+        case .child(let url, _, _): return url
+        }
+    }
 }

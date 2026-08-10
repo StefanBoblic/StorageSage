@@ -33,6 +33,10 @@ final class FSEventsMonitor: ObservableObject, @unchecked Sendable {
     private let callbackQueue = DispatchQueue(label: "com.storagesage.filesystem-events", qos: .utility)
     private var stream: FSEventStreamRef?
     private var callbackBox: FSEventsCallbackBox?
+    private var pendingPaths: Set<String> = []
+    private var pendingRequiresFullRescan = false
+    private var pendingLatestEventID: FSEventStreamEventId?
+    private var pendingPublish: DispatchWorkItem?
 
     init(roots: [URL] = [FileManager.default.homeDirectoryForCurrentUser]) {
         self.roots = roots
@@ -86,9 +90,6 @@ final class FSEventsMonitor: ObservableObject, @unchecked Sendable {
         flags: [FSEventStreamEventFlags],
         eventIDs: [FSEventStreamEventId]
     ) {
-        if let latestID = eventIDs.max() {
-            UserDefaults.standard.set(Int64(bitPattern: latestID), forKey: eventIDDefaultsKey)
-        }
         let rescanFlags = FSEventStreamEventFlags(
             kFSEventStreamEventFlagMustScanSubDirs
                 | kFSEventStreamEventFlagUserDropped
@@ -96,15 +97,45 @@ final class FSEventsMonitor: ObservableObject, @unchecked Sendable {
                 | kFSEventStreamEventFlagEventIdsWrapped
                 | kFSEventStreamEventFlagRootChanged
         )
+        pendingPaths.formUnion(paths)
+        pendingRequiresFullRescan = pendingRequiresFullRescan
+            || flags.contains { $0 & rescanFlags != 0 }
+        if let latestID = eventIDs.max() {
+            pendingLatestEventID = max(pendingLatestEventID ?? 0, latestID)
+        }
+        pendingPublish?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.publishPendingChanges() }
+        pendingPublish = work
+        callbackQueue.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    private func publishPendingChanges() {
         let batch = FileChangeBatch(
-            paths: Array(Set(paths)).sorted(),
-            requiresFullRescan: flags.contains { $0 & rescanFlags != 0 }
+            paths: collapsed(paths: pendingPaths),
+            requiresFullRescan: pendingRequiresFullRescan
         )
+        if let latestID = pendingLatestEventID {
+            UserDefaults.standard.set(Int64(bitPattern: latestID), forKey: eventIDDefaultsKey)
+        }
+        pendingPaths.removeAll(keepingCapacity: true)
+        pendingRequiresFullRescan = false
+        pendingLatestEventID = nil
+        pendingPublish = nil
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.latestBatch = batch
             self.revision &+= 1
         }
+    }
+
+    private func collapsed(paths: Set<String>) -> [String] {
+        var result: [String] = []
+        for path in paths.sorted() {
+            if result.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { continue }
+            result.removeAll { $0.hasPrefix(path + "/") }
+            result.append(path)
+        }
+        return result
     }
 
     private static let callback: FSEventStreamCallback = {

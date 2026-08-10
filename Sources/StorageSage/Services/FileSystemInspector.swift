@@ -10,9 +10,16 @@ import Foundation
 protocol FileSystemInspecting: Sendable {
     func children(of directory: URL) throws -> [URL]
     func allocatedSize(of url: URL) -> Int64
+    func allocatedSizes(of urls: [URL]) -> [URL: Int64]
     func modificationDate(of url: URL) -> Date?
     func exists(_ url: URL) -> Bool
     func isReadable(_ url: URL) -> Bool
+}
+
+extension FileSystemInspecting {
+    func allocatedSizes(of urls: [URL]) -> [URL: Int64] {
+        Dictionary(uniqueKeysWithValues: urls.map { ($0, allocatedSize(of: $0)) })
+    }
 }
 
 struct FileSystemInspector: FileSystemInspecting {
@@ -31,6 +38,10 @@ struct FileSystemInspector: FileSystemInspecting {
     }
 
     func allocatedSize(of url: URL) -> Int64 {
+        allocatedSizes(of: [url])[url] ?? 0
+    }
+
+    func allocatedSizes(of urls: [URL]) -> [URL: Int64] {
         let keys: Set<URLResourceKey> = [
             .isDirectoryKey,
             .isRegularFileKey,
@@ -38,27 +49,51 @@ struct FileSystemInspector: FileSystemInspecting {
             .totalFileAllocatedSizeKey,
             .isSymbolicLinkKey
         ]
-        guard let root = try? url.resourceValues(forKeys: keys) else { return 0 }
-        if root.isSymbolicLink == true { return 0 }
-        if root.isRegularFile == true {
-            return Int64(root.totalFileAllocatedSize ?? root.fileAllocatedSize ?? 0)
-        }
-        if root.isDirectory == true, let fastSize = diskUsageSize(of: url) {
-            return fastSize
+        var sizes: [URL: Int64] = [:]
+        var directories: [URL] = []
+
+        for url in urls {
+            guard let values = try? url.resourceValues(forKeys: keys) else {
+                sizes[url] = 0
+                continue
+            }
+            if values.isSymbolicLink == true {
+                sizes[url] = 0
+            } else if values.isRegularFile == true {
+                sizes[url] = Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+            } else if values.isDirectory == true {
+                directories.append(url)
+            } else {
+                sizes[url] = 0
+            }
         }
 
-        return enumeratedAllocatedSize(of: url, keys: keys)
+        let fastSizes = diskUsageSizes(of: directories)
+        for directory in directories {
+            sizes[directory] = fastSizes[directory]
+                ?? enumeratedAllocatedSize(of: directory, keys: keys)
+        }
+        return sizes
     }
 
-    private func diskUsageSize(of url: URL) -> Int64? {
+    private func diskUsageSizes(of urls: [URL]) -> [URL: Int64] {
+        guard !urls.isEmpty else { return [:] }
         guard
-            let result = commands.run("du", arguments: ["-sk", url.path], timeout: 30),
-            result.terminationStatus == 0,
-            let output = String(data: result.output, encoding: .utf8),
-            let kilobytesText = output.split(whereSeparator: \.isWhitespace).first,
-            let kilobytes = Int64(kilobytesText)
-        else { return nil }
-        return kilobytes * 1_024
+            let result = commands.run("du", arguments: ["-sk"] + urls.map(\.path), timeout: 60),
+            let output = String(data: result.output, encoding: .utf8)
+        else { return [:] }
+
+        let urlsByPath = Dictionary(uniqueKeysWithValues: urls.map { ($0.path, $0) })
+        var sizes: [URL: Int64] = [:]
+        for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let separator = line.firstIndex(where: \.isWhitespace),
+                  let kilobytes = Int64(line[..<separator]) else { continue }
+            let path = String(line[separator...]).trimmingCharacters(in: .whitespaces)
+            if let url = urlsByPath[path] {
+                sizes[url] = kilobytes * 1_024
+            }
+        }
+        return sizes
     }
 
     private func enumeratedAllocatedSize(
